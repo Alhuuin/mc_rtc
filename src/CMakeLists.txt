@@ -512,6 +512,7 @@ set(mc_tasks_SRC
     mc_tasks/LookAtTask.cpp
     mc_tasks/LookAtFrameTask.cpp
     mc_tasks/MetaTaskLoader.cpp
+    mc_tasks/TorqueTask.cpp
     mc_tasks/lipm_stabilizer/StabilizerTask.cpp
     mc_tasks/lipm_stabilizer/StabilizerTask_log_gui.cpp
     mc_tasks/lipm_stabilizer/ZMPCC.cpp
@@ -549,6 +550,7 @@ set(mc_tasks_HDR
     ../include/mc_tasks/LookAtTask.h
     ../include/mc_tasks/LookAtFrameTask.h
     ../include/mc_tasks/LookAtSurfaceTask.h
+    ../include/mc_tasks/TorqueTask.h
     ../include/mc_tasks/lipm_stabilizer/StabilizerTask.h
     ../include/mc_tasks/lipm_stabilizer/Contact.h
     ../include/mc_tasks/lipm_stabilizer/ZMPCC.h
