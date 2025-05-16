@@ -21,7 +21,28 @@ TorqueTask::TorqueTask(const mc_solver::QPSolver & solver, unsigned int rIndex, 
 
 void TorqueTask::desiredTorque(const Eigen::VectorXd & tau)
 {
+  if(tau.size() != robots_.robot(rIndex_).mb().nrDof())
+  {
+    mc_rtc::log::error("[{}] Input torque vector has size {}, expected {}", name(), tau.size(),
+                       robots_.robot(rIndex_).mb().nrDof());
+    return;
+  }
+
   desiredTorque_ = tau;
+}
+
+void TorqueTask::desiredTorque(const std::string & jointName, double tau)
+{
+  if(!robots_.robot(rIndex_).hasJoint(jointName))
+  {
+    mc_rtc::log::error_and_throw("[{}] No joint named {} in {}", name(), jointName, robots_.robot(rIndex_).name());
+  }
+
+  auto jIndex = static_cast<int>(robots_.robot(rIndex_).jointIndexByName(jointName));
+  const auto & joint = robots_.robot(rIndex_).mb().joint(jIndex);
+  auto dofIndex = robots_.robot(rIndex_).mb().jointPosInDof(jIndex);
+
+  desiredTorque_(dofIndex) = tau;
 }
 
 const Eigen::VectorXd & TorqueTask::desiredTorque() const
@@ -73,8 +94,7 @@ void TorqueTask::update(mc_solver::QPSolver & solver)
 
 void TorqueTask::addToLogger(mc_rtc::Logger & logger)
 {
-  logger.addLogEntry(name_ + "_desiredTorque", this, [this]() { return desiredTorque_; });
-  logger.addLogEntry(name_ + "_currentTorques", this, [this]() { return currentTorques(); });
+  logger.addLogEntry(name_ + "_tau_d ", this, [this]() { return desiredTorque_; });
 }
 
 void TorqueTask::addToGUI(mc_rtc::gui::StateBuilder & gui)
