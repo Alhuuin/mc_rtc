@@ -17,6 +17,8 @@ public:
 
   //! Set the desired joint torques (size: nrDof)
   void desiredTorque(const Eigen::VectorXd & tau);
+  //! Set the desired joint torque for a specific joint
+  void desiredTorque(const std::string & jointName, double t);
   //! Get the current desired joint torques
   const Eigen::VectorXd & desiredTorque() const;
 
