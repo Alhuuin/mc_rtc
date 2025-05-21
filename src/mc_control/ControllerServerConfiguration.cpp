@@ -28,7 +28,7 @@ void ControllerServerConfiguration::load(const mc_rtc::Configuration & config)
       (*cfg)("Host", opt_out->host);
       if(auto ports_cfg = cfg->find("Ports"))
       {
-        auto ports = static_cast<std::array<uint16_t, 2>>(*ports_cfg);
+        std::array<uint16_t, 2> ports = *ports_cfg;
         opt_out->pub_port = ports[0];
         opt_out->pull_port = ports[1];
       }
