@@ -15,11 +15,9 @@ struct MC_TASKS_DLLAPI TorqueTask : public PostureTask
 public:
   TorqueTask(const mc_solver::QPSolver & solver, unsigned int rIndex, double weight = 1000.0);
 
-  void torques(const std::vector<std::vector<double>> & tau);
-  void torques(const std::string & jointName, std::vector<double> tau);
-  std::vector<std::vector<double>> torques() const;
-
-  Eigen::VectorXd currentTorques() const;
+  void torque(const std::vector<std::vector<double>> & tau);
+  void torque(const std::string & jointName, std::vector<double> tau);
+  std::vector<std::vector<double>> torque() const;
 
   /** Set specific joint targets
    *
@@ -36,7 +34,7 @@ public:
   void addToLogger(mc_rtc::Logger & logger) override;
 
 private:
-  std::vector<std::vector<double>> torques_;
+  std::vector<std::vector<double>> torque_;
   double dt_;
   unsigned int rIndex_;
   const mc_rbdyn::Robots & robots_;
