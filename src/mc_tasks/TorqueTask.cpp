@@ -50,7 +50,18 @@ std::vector<std::vector<double>> TorqueTask::torque() const
 
 void TorqueTask::target(const std::map<std::string, std::vector<double>> & joints)
 {
-  for(const auto & j : joints) { torque(j.first, j.second); }
+  auto tau = torque_;
+  for(const auto & j : joints)
+  {
+    if(!robots_.robot(rIndex_).hasJoint(j.first))
+    {
+      mc_rtc::log::error_and_throw("[{}] No joint named {} in {}", name(), j.first, robots_.robot(rIndex_).name());
+    }
+
+    auto jIndex = static_cast<int>(robots_.robot(rIndex_).jointIndexByName(j.first));
+    tau[jIndex] = j.second;
+  }
+  torque(tau);
 }
 
 void TorqueTask::reset()
@@ -105,7 +116,7 @@ void TorqueTask::addToLogger(mc_rtc::Logger & logger)
                        for(size_t i = 0; i < tau.size(); i++)
                        {
                          auto mbcIndex = robot.jointIndexInMBC(i);
-                         tau[i] = torque_[static_cast<size_t>(mbcIndex)][0];
+                         if(mbcIndex != -1) { tau[i] = torque_[static_cast<size_t>(mbcIndex)][0]; }
                        }
                        return tau;
                      });
