@@ -20,8 +20,6 @@ on:
 env:
   # Branch that triggered this workflow
   GITHUB_BRANCH: ${{ github.head_ref || github.ref_name }}
-  # Repository that triggered this workflow
-  GITHUB_REPO_TRIGGER: ${{ github.actor }}/${{ github.event.repository.name }}
 
 jobs:
   build:
@@ -29,7 +27,7 @@ jobs:
       fail-fast: false
       matrix:
         # temporarely disable macos-latest
-        os: [ubuntu-20.04, ubuntu-22.04, windows-latest]
+        os: [ubuntu-22.04, windows-latest]
         build-type: [Debug, RelWithDebInfo]
         compiler: [gcc, clang]
         exclude:
@@ -43,8 +41,24 @@ jobs:
             build-type: Debug
     runs-on: ${{ matrix.os }}
     steps:
+    - name: Dump github context
+      run:   echo "$GITHUB_CONTEXT"
+      shell: bash
+      env:
+       GITHUB_CONTEXT: ${{ toJson(github) }}
+    - name: Set repository name based on event (pull_request/push)
+      shell: bash
+      run: |
+         if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+           echo "GITHUB_REPO_TRIGGER=${{ github.event.pull_request.head.repo.full_name }}" >> $GITHUB_ENV
+         else
+           echo "GITHUB_REPO_TRIGGER=${{ github.repository }}" >> $GITHUB_ENV
+         fi
+    - name: Use repository name
+      shell: bash
+      run: echo "The triggering repository is $GITHUB_REPO_TRIGGER"
     - name: Linux cleanup
-      if: matrix.os == 'ubuntu-20.04' || matrix.os == 'ubuntu-22.04'
+      if: matrix.os == 'ubuntu-22.04'
       run: |
         set -e
         sudo rm -rf /opt/hostedtoolcache/CodeQL
