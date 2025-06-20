@@ -1,5 +1,4 @@
 #include <mc_rbdyn/Robot.h>
-#include <mc_rtc/gui/ArrayInput.h>
 #include <mc_rtc/gui/ArrayLabel.h>
 #include <mc_rtc/gui/NumberInput.h>
 #include <mc_rtc/log/Logger.h>
@@ -83,7 +82,7 @@ Eigen::VectorXd TorqueTask::jointsToDofs(const std::vector<std::vector<double>> 
 
     size_t dofIndex = mb.jointPosInDof(jIndex);
 
-    for(size_t j = 0; j < joint.dof(); ++j)
+    for(size_t j = 0; static_cast<int>(j) < joint.dof(); ++j)
     {
       if(j < joint_torque.size()) { result(dofIndex + j) = joint_torque[j]; }
       else { result(dofIndex + j) = 0.0; }
@@ -125,10 +124,25 @@ void TorqueTask::addToLogger(mc_rtc::Logger & logger)
 void TorqueTask::addToGUI(mc_rtc::gui::StateBuilder & gui)
 {
   MetaTask::addToGUI(gui);
-  gui.addElement({"Tasks", name_, "Torque"},
-                 mc_rtc::gui::ArrayInput(
-                     "Desired Torque", [this]() { return this->jointsToDofs(this->torque_); },
-                     [this](const std::vector<std::vector<double>> & tau) { this->torque(tau); }));
+  for(const auto & j : robots_.robot(rIndex_).mb().joints())
+  {
+    mc_rtc::log::info(j.name());
+    auto jIndex = robots_.robot(rIndex_).jointIndexByName(j.name());
+    auto updateTorque = [this](unsigned int jIndex, double tau)
+    {
+      if(tau > robots_.robot(rIndex_).tu()[jIndex][0]) tau = robots_.robot(rIndex_).tu()[jIndex][0];
+      if(tau < robots_.robot(rIndex_).tl()[jIndex][0]) tau = robots_.robot(rIndex_).tl()[jIndex][0];
+      this->torque_[jIndex][0] = tau;
+      torque(torque_);
+    };
+    if(robots_.robot(rIndex_).tl()[jIndex].size() != 0)
+    {
+      gui.addElement({"Tasks", name_, "Target"},
+                     mc_rtc::gui::NumberInput(
+                         j.name(), [this, jIndex]() { return this->torque_[jIndex][0]; },
+                         [jIndex, updateTorque](double tau) { updateTorque(jIndex, tau); }));
+    }
+  }
 }
 
 } // namespace mc_tasks
