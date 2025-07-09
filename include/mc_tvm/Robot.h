@@ -16,7 +16,7 @@
 
 #include <RBDyn/FD.h>
 
-#include <mc_rbdyn/ExternalTorqueSensor.h>
+#include <mc_rbdyn/VirtualTorqueSensor.h>
 
 namespace mc_tvm
 {

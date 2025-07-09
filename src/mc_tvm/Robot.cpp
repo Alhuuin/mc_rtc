@@ -242,9 +242,9 @@ tvm::VariablePtr Robot::qJoint(size_t jIdx)
 
 void Robot::updateEF()
 {
-  if(robot_.hasDevice<mc_rbdyn::ExternalTorqueSensor>("externalTorqueSensor"))
+  if(robot_.hasDevice<mc_rbdyn::VirtualTorqueSensor>("ExtTorquesVirtSensor"))
   {
-    tau_ext_ = robot_.device<mc_rbdyn::ExternalTorqueSensor>("externalTorqueSensor").torques();
+    tau_ext_ = robot_.device<mc_rbdyn::VirtualTorqueSensor>("ExtTorquesVirtSensor").torques();
   }
   ddq_ext_ = H().inverse() * tau_ext_;
 }

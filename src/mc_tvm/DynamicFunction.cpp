@@ -108,15 +108,7 @@ sva::ForceVecd DynamicFunction::contactForce(const mc_rbdyn::RobotFrame & frame)
 void DynamicFunction::updateb()
 {
   b_ = robot_.tvmRobot().C();
-  if(compensateExternalForces_)
-  {
-    b_ -= robot_.tvmRobot().tauExternal();
-    // mc_rtc::log::info("Compensating for : {}", robot_.tvmRobot().tauExternal().transpose());
-    if(robot_.hasDevice<mc_rbdyn::VirtualTorqueSensor>("virtualTorqueSensor"))
-    {
-      b_ += robot_.device<mc_rbdyn::VirtualTorqueSensor>("virtualTorqueSensor").torques();
-    }
-  }
+  if(compensateExternalForces_) { b_ -= robot_.tvmRobot().tauExternal(); }
 }
 
 void DynamicFunction::updateJacobian()
