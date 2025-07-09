@@ -13,10 +13,11 @@ namespace mc_tasks
 {
 
 TorqueTask::TorqueTask(const mc_solver::QPSolver & solver, unsigned int rIndex, double weight)
-: PostureTask(solver, rIndex, 0.1, weight), dt_(solver.dt()), rIndex_(rIndex), robots_(solver.robots())
+: PostureTask(solver, rIndex, 0, weight), dt_(solver.dt()), rIndex_(rIndex), robots_(solver.robots())
 {
   type_ = "torque";
   name_ = std::string("torque_") + robots_.robot(rIndex_).name();
+  torque(robots_.robot(rIndex_).mbc().jointTorque);
   reset();
 }
 
@@ -50,22 +51,37 @@ std::vector<std::vector<double>> TorqueTask::torque() const
 void TorqueTask::target(const std::map<std::string, std::vector<double>> & joints)
 {
   auto tau = torque_;
+  Eigen::VectorXd dimW = dimWeight();
+
+  const auto & mb = robots_.robot(rIndex_).mb();
+
   for(const auto & j : joints)
   {
     if(!robots_.robot(rIndex_).hasJoint(j.first))
     {
       mc_rtc::log::error_and_throw("[{}] No joint named {} in {}", name(), j.first, robots_.robot(rIndex_).name());
     }
-
     auto jIndex = static_cast<int>(robots_.robot(rIndex_).jointIndexByName(j.first));
     tau[jIndex] = j.second;
+
+    // add a dimweight by default for every used joint
+    if(mb.joint(jIndex).dof() > 0 && dimW[mb.jointPosInDof(jIndex)] == 0) { dimW[mb.jointPosInDof(jIndex)] = 1; }
   }
+
   torque(tau);
+  dimWeight(dimW);
 }
 
 void TorqueTask::reset()
 {
-  torque(robots_.robot(rIndex_).mbc().jointTorque);
+  // torque(robots_.robot(rIndex_).mbc().jointTorque);
+  for(size_t i = 0; i < torque_.size(); i++)
+  {
+    if(torque_.size() != 0) { torque_[i] = {0}; }
+  }
+  Eigen::VectorXd dimW = dimWeight();
+  dimW.setZero();
+  dimWeight(dimW);
 }
 
 Eigen::VectorXd TorqueTask::jointsToDofs(const std::vector<std::vector<double>> & joints)
@@ -107,6 +123,7 @@ void TorqueTask::update(mc_solver::QPSolver & solver)
 
 void TorqueTask::addToLogger(mc_rtc::Logger & logger)
 {
+  PostureTask::addToLogger(logger);
   logger.addLogEntry(name_ + "_tau_d ", this,
                      [this]()
                      {
@@ -124,16 +141,29 @@ void TorqueTask::addToLogger(mc_rtc::Logger & logger)
 void TorqueTask::addToGUI(mc_rtc::gui::StateBuilder & gui)
 {
   MetaTask::addToGUI(gui);
+  PostureTask::addToGUI(gui);
+
   for(const auto & j : robots_.robot(rIndex_).mb().joints())
   {
-    mc_rtc::log::info(j.name());
     auto jIndex = robots_.robot(rIndex_).jointIndexByName(j.name());
-    auto updateTorque = [this](unsigned int jIndex, double tau)
+    const auto & mb = robots_.robot(rIndex_).mb();
+    auto updateTorque = [this, mb](unsigned int jIndex, double tau)
     {
       if(tau > robots_.robot(rIndex_).tu()[jIndex][0]) tau = robots_.robot(rIndex_).tu()[jIndex][0];
       if(tau < robots_.robot(rIndex_).tl()[jIndex][0]) tau = robots_.robot(rIndex_).tl()[jIndex][0];
+
+      Eigen::VectorXd dimW = dimWeight();
+      if(mb.joint(jIndex).dof() > 0 && dimW[mb.jointPosInDof(jIndex)] == 0) { dimW[mb.jointPosInDof(jIndex)] = 1; }
+      dimWeight(dimW);
+
       this->torque_[jIndex][0] = tau;
       torque(torque_);
+    };
+    auto updateDimWeight = [this, mb](unsigned int jIndex, double weight)
+    {
+      Eigen::VectorXd dimW = dimWeight();
+      if(mb.joint(jIndex).dof() > 0) { dimW[mb.jointPosInDof(jIndex)] = weight; }
+      dimWeight(dimW);
     };
     if(robots_.robot(rIndex_).tl()[jIndex].size() != 0)
     {
@@ -141,6 +171,13 @@ void TorqueTask::addToGUI(mc_rtc::gui::StateBuilder & gui)
                      mc_rtc::gui::NumberInput(
                          j.name(), [this, jIndex]() { return this->torque_[jIndex][0]; },
                          [jIndex, updateTorque](double tau) { updateTorque(jIndex, tau); }));
+    }
+    if(dimWeight().size())
+    {
+      gui.addElement({"Tasks", name_, "Gains", "Dimensional weights"},
+                     mc_rtc::gui::NumberInput(
+                         j.name(), [this, jIndex, mb]() { return this->dimWeight()[mb.jointPosInDof(jIndex)]; },
+                         [jIndex, updateDimWeight, mb](double weight) { updateDimWeight(jIndex, weight); }));
     }
   }
 }
