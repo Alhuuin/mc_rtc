@@ -9,6 +9,7 @@ namespace mc_tasks
 /**
  * TorqueTask: Specify desired joint torques, injects the corresponding reference acceleration into a PostureTask
  * backend.
+ * TODO: add mimics handling
  */
 struct MC_TASKS_DLLAPI TorqueTask : public PostureTask
 {
