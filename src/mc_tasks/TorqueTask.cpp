@@ -141,7 +141,18 @@ void TorqueTask::addToLogger(mc_rtc::Logger & logger)
 void TorqueTask::addToGUI(mc_rtc::gui::StateBuilder & gui)
 {
   MetaTask::addToGUI(gui);
-  PostureTask::addToGUI(gui);
+  gui.addElement({"Tasks", name_, "Gains"},
+                 mc_rtc::gui::NumberInput(
+                     "stiffness", [this]() { return this->stiffness(); },
+                     [this](const double & s) { this->setGains(s, this->damping()); }),
+                 mc_rtc::gui::NumberInput(
+                     "damping", [this]() { return this->damping(); },
+                     [this](const double & d) { this->setGains(this->stiffness(), d); }),
+                 mc_rtc::gui::NumberInput(
+                     "stiffness & damping", [this]() { return this->stiffness(); },
+                     [this](const double & g) { this->stiffness(g); }),
+                 mc_rtc::gui::NumberInput(
+                     "weight", [this]() { return this->weight(); }, [this](const double & w) { this->weight(w); }));
 
   for(const auto & j : robots_.robot(rIndex_).mb().joints())
   {
