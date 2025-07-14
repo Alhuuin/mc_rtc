@@ -48,28 +48,61 @@ std::vector<std::vector<double>> TorqueTask::torque() const
   return torque_;
 }
 
+// void TorqueTask::target(const std::map<std::string, std::vector<double>> & joints)
+// {
+//   auto tau = torque_;
+//   Eigen::VectorXd dimW = dimWeight();
+
+//   const auto & mb = robots_.robot(rIndex_).mb();
+
+//   for(const auto & j : joints)
+//   {
+//     if(!robots_.robot(rIndex_).hasJoint(j.first))
+//     {
+//       mc_rtc::log::error_and_throw("[{}] No joint named {} in {}", name(), j.first, robots_.robot(rIndex_).name());
+//     }
+//     auto jIndex = robots_.robot(rIndex_).jointIndexByName(j.first);
+//     tau[jIndex] = j.second;
+
+//     // add a dimweight by default for every used joint
+//     if(mb.joint(jIndex).dof() > 0 && dimW[mb.jointPosInDof(jIndex)] == 0) { dimW[mb.jointPosInDof(jIndex)] = 1; }
+//   }
+
+//   torque(tau);
+//   dimWeight(dimW);
+// }
+
 void TorqueTask::target(const std::map<std::string, std::vector<double>> & joints)
 {
   auto tau = torque_;
-  Eigen::VectorXd dimW = dimWeight();
-
-  const auto & mb = robots_.robot(rIndex_).mb();
-
   for(const auto & j : joints)
   {
-    if(!robots_.robot(rIndex_).hasJoint(j.first))
+    if(robots_.robot(rIndex_).hasJoint(j.first))
     {
-      mc_rtc::log::error_and_throw("[{}] No joint named {} in {}", name(), j.first, robots_.robot(rIndex_).name());
+      if(static_cast<size_t>(
+             robots_.robot(rIndex_).mb().joint(static_cast<int>(robots_.robot(rIndex_).jointIndexByName(j.first))).dof())
+         == j.second.size())
+      {
+        tau[robots_.robot(rIndex_).jointIndexByName(j.first)] = j.second;
+        // if(mimics_.count(j.first))
+        // {
+        //   for(auto ji : mimics_.at(j.first))
+        //   {
+        //     const auto & mimic = robots_.robot(rIndex_).mb().joint(ji);
+        //     if(static_cast<size_t>(mimic.dof()) == j.second.size())
+        //     {
+        //       for(unsigned i = 0; i < j.second.size(); i++)
+        //       {
+        //         q[static_cast<size_t>(ji)][i] = mimic.mimicMultiplier() * j.second[i] + mimic.mimicOffset();
+        //       }
+        //     }
+        //   }
+        // }
+      }
+      else { mc_rtc::log::error("PostureTask::target dof missmatch for {}", j.first); }
     }
-    auto jIndex = static_cast<int>(robots_.robot(rIndex_).jointIndexByName(j.first));
-    tau[jIndex] = j.second;
-
-    // add a dimweight by default for every used joint
-    if(mb.joint(jIndex).dof() > 0 && dimW[mb.jointPosInDof(jIndex)] == 0) { dimW[mb.jointPosInDof(jIndex)] = 1; }
   }
-
   torque(tau);
-  dimWeight(dimW);
 }
 
 void TorqueTask::reset()
