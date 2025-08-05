@@ -49,8 +49,8 @@ namespace mc_tvm
  */
 struct MC_TVM_DLLAPI Robot : public tvm::graph::abstract::Node<Robot>
 {
-  SET_OUTPUTS(Robot, FK, FV, FA, NormalAcceleration, tau, H, C, ExternalForces)
-  SET_UPDATES(Robot, FK, FV, FA, NormalAcceleration, H, C, ExternalForces)
+  SET_OUTPUTS(Robot, FK, FV, FA, NormalAcceleration, tau, H, C, Dynamics, ExternalForces)
+  SET_UPDATES(Robot, FK, FV, FA, NormalAcceleration, tau, H, C, Dynamics, ExternalForces)
 
   friend struct mc_rbdyn::Robot;
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
