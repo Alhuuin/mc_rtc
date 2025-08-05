@@ -1,0 +1,152 @@
+/*
+ * Copyright 2015-2022 CNRS-UM LIRMM, CNRS-AIST JRL
+ */
+
+#include <mc_tvm/DynamicFunction.h>
+#include <mc_tvm/TorqueFunction.h>
+
+#include <mc_rbdyn/Robot.h>
+#include <mc_tvm/Robot.h>
+
+namespace mc_tvm
+{
+
+TorqueFunction::TorqueFunction(const mc_rbdyn::Robot & robot, bool compensateExternalForces)
+: tvm::function::abstract::LinearFunction(robot.mb().nrDof()), robot_(robot),
+  compensateExternalForces_(compensateExternalForces), j0_(robot_.mb().joint(0).type() == rbd::Joint::Free ? 1 : 0)
+{
+  // auto dynFunc = std::make_shared<mc_tvm::DynamicFunction>(robot_);
+  registerUpdates(Update::B, &TorqueFunction::updateb);
+  registerUpdates(Update::Jacobian, &TorqueFunction::updateJacobian);
+  addOutputDependency<TorqueFunction>(Output::B, Update::B);
+  addOutputDependency<TorqueFunction>(Output::Jacobian, Update::Jacobian);
+  auto & tvm_robot = robot.tvmRobot();
+  // addInputDependency<TorqueFunction>(Update::Value, dynFunc, mc_tvm::DynamicFunction::Output::B);
+  // addInputDependency<TorqueFunction>(Update::Value, robot_.tvmRobot(), Robot::Output::tau);
+  addInputDependency<TorqueFunction>(Update::Jacobian, tvm_robot, Robot::Output::H);
+  addInputDependency<TorqueFunction>(Update::B, tvm_robot, Robot::Output::C);
+  if(compensateExternalForces_)
+  {
+    addInputDependency<TorqueFunction>(Update::B, tvm_robot, Robot::Output::ExternalForces);
+  }
+  // addInputDependency<TorqueFunction>(Update::Value, robot_.tvmRobot().tau(), Output::Value);
+  addVariable(tvm::dot(tvm_robot.q(), 2), true);
+  // addVariable(tvm_robot.tau(), true);
+  // jacobian_[tvm_robot.tau().get()] = -Eigen::MatrixXd::Identity(robot_.mb().nrDof(), robot_.mb().nrDof());
+  // jacobian_[tvm_robot.tau().get()].properties(tvm::internal::MatrixProperties::MINUS_IDENTITY);
+  velocity_.setZero();
+
+  reset();
+}
+
+void TorqueFunction::updateb() // Ax + b = 0
+{
+  // mc_rtc::log::info("[TorqueFunction] value_ = tau: {} - tau_d: {} = {}", robot_.tvmRobot().tau()->value(), torque_,
+  // (robot_.tvmRobot().tau()->value() - torque_));
+  b_ = robot_.tvmRobot().C() - torque_;
+  if(compensateExternalForces_) { b_ -= robot_.tvmRobot().tauExternal(); }
+}
+
+void TorqueFunction::updateJacobian()
+{
+  const auto & robot = robot_.tvmRobot();
+  splitJacobian(robot.H(), robot.alphaD());
+}
+
+void TorqueFunction::reset()
+{
+  torque_ = robot_.tvmRobot().tau()->value();
+  torque_mc_rtc_ = robot_.mbc().jointTorque;
+  mcrtcTorqueToEigen();
+}
+
+void TorqueFunction::torque(const std::string & j, const std::vector<double> & tau)
+{
+  if(!robot_.hasJoint(j))
+  {
+    mc_rtc::log::error("[TorqueFunction] No joint named {} in {}", j, robot_.name());
+    return;
+  }
+  auto jIndex = static_cast<size_t>(robot_.mb().jointIndexByName(j));
+  if(torque_mc_rtc_[jIndex].size() != tau.size())
+  {
+    mc_rtc::log::error("[TorqueFunction] Wrong size for input target on joint {}, excepted {} got {}", j,
+                       torque_mc_rtc_[jIndex].size(), tau.size());
+    return;
+  }
+  torque_mc_rtc_[static_cast<size_t>(jIndex)] = tau;
+  mcrtcTorqueToEigen();
+}
+
+namespace
+{
+bool isValidTorque(const std::vector<std::vector<double>> & ref, const std::vector<std::vector<double>> & in)
+{
+  if(ref.size() != in.size()) { return false; }
+  for(size_t i = 0; i < ref.size(); ++i)
+  {
+    if(ref[i].size() != in[i].size()) { return false; }
+  }
+  return true;
+}
+} // namespace
+
+void TorqueFunction::torque(const std::vector<std::vector<double>> & tau)
+{
+  if(!isValidTorque(torque_mc_rtc_, tau))
+  {
+    mc_rtc::log::error("[TorqueFunction] Invalid torque provided for {}", robot_.name());
+    return;
+  }
+  torque_mc_rtc_ = tau;
+  mcrtcTorqueToEigen();
+}
+
+// void TorqueFunction::updateValue()
+// {
+//   // const auto & tau = robot_.tvmRobot().tau(); // this is a VariablePtr
+//   int pos = 0;
+//   for(int jI = j0_; jI < robot_.mb().nrJoints(); ++jI)
+//   {
+//     auto jIdx = static_cast<size_t>(jI);
+//     const auto & j = robot_.mb().joint(jI);
+//     if(j.dof() == 1) // prismatic or revolute
+//     {
+//       value_(pos) = robot_.mbc().jointTorque[jIdx][0] - torque_[jIdx][0];
+//       mc_rtc::log::info("[TorqueFunction] value_[{}] = tau: {} - tau_d: {} = {}", pos,
+//       robot_.mbc().jointTorque[jIdx][0], torque_[jIdx][0], value_(pos)); pos++;
+//     }
+//   }
+// }
+
+void TorqueFunction::eigenToMCrtcTorque()
+{
+  int pos = 0;
+  for(int jI = j0_; jI < robot_.mb().nrJoints(); ++jI)
+  {
+    auto jIdx = static_cast<size_t>(jI);
+    const auto & j = robot_.mb().joint(jI);
+    if(j.dof() == 1) // prismatic or revolute
+    {
+      torque_mc_rtc_[jIdx][0] = torque_[pos];
+      pos++;
+    }
+  }
+}
+
+void TorqueFunction::mcrtcTorqueToEigen()
+{
+  int pos = 0;
+  for(int jI = j0_; jI < robot_.mb().nrJoints(); ++jI)
+  {
+    auto jIdx = static_cast<size_t>(jI);
+    const auto & j = robot_.mb().joint(jI);
+    if(j.dof() == 1) // prismatic or revolute
+    {
+      torque_[pos] = torque_mc_rtc_[jIdx][0];
+      pos++;
+    }
+  }
+}
+
+} // namespace mc_tvm
