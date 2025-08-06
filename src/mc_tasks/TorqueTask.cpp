@@ -7,6 +7,7 @@
 #include <mc_tasks/TorqueTask.h>
 #include <RBDyn/FD.h>
 #include "mc_rtc/logging.h"
+#include <Eigen/src/Core/Matrix.h>
 #include <cstddef>
 
 namespace mc_tasks
@@ -17,7 +18,9 @@ TorqueTask::TorqueTask(const mc_solver::QPSolver & solver, unsigned int rIndex, 
 {
   type_ = "torque";
   name_ = std::string("torque_") + robots_.robot(rIndex_).name();
-  torque(robots_.robot(rIndex_).mbc().jointTorque);
+  torque(robots_.robot(rIndex_)
+             .mbc()
+             .jointTorque); // initialize with current joint torques to have a valid shape to start with
   reset();
 }
 
@@ -50,38 +53,29 @@ std::vector<std::vector<double>> TorqueTask::torque() const
 
 void TorqueTask::target(const std::map<std::string, std::vector<double>> & joints)
 {
-  auto tau = torque_;
-  Eigen::VectorXd dimW = dimWeight();
-
-  const auto & mb = robots_.robot(rIndex_).mb();
-
+  auto tau = torque();
   for(const auto & j : joints)
   {
-    if(!robots_.robot(rIndex_).hasJoint(j.first))
+    if(robots_.robot(rIndex_).hasJoint(j.first))
     {
-      mc_rtc::log::error_and_throw("[{}] No joint named {} in {}", name(), j.first, robots_.robot(rIndex_).name());
+      if(static_cast<size_t>(
+             robots_.robot(rIndex_).mb().joint(static_cast<int>(robots_.robot(rIndex_).jointIndexByName(j.first))).dof())
+         == j.second.size())
+      {
+        tau[robots_.robot(rIndex_).jointIndexByName(j.first)] = j.second;
+      }
+      else { mc_rtc::log::error("PostureTask::target dof missmatch for {}", j.first); }
     }
-    auto jIndex = static_cast<int>(robots_.robot(rIndex_).jointIndexByName(j.first));
-    tau[jIndex] = j.second;
-
-    // add a dimweight by default for every used joint
-    if(mb.joint(jIndex).dof() > 0 && dimW[mb.jointPosInDof(jIndex)] == 0) { dimW[mb.jointPosInDof(jIndex)] = 1; }
   }
-
   torque(tau);
-  dimWeight(dimW);
 }
 
 void TorqueTask::reset()
 {
-  // torque(robots_.robot(rIndex_).mbc().jointTorque);
   for(size_t i = 0; i < torque_.size(); i++)
   {
     if(torque_.size() != 0) { torque_[i] = {0}; }
   }
-  Eigen::VectorXd dimW = dimWeight();
-  dimW.setZero();
-  dimWeight(dimW);
 }
 
 Eigen::VectorXd TorqueTask::jointsToDofs(const std::vector<std::vector<double>> & joints)
@@ -110,14 +104,28 @@ Eigen::VectorXd TorqueTask::jointsToDofs(const std::vector<std::vector<double>> 
 void TorqueTask::update(mc_solver::QPSolver & solver)
 {
   auto & robot = robots_.robot(rIndex_);
+  size_t dofNumber = robot.mb().nrDof();
+
+  // check if the robot has a floating base and remote it from the dof count
+  if(robot.mb().joint(0).type() == rbd::Joint::Type::Free)
+  {
+    mc_rtc::log::info("[TorqueTask] Robot {} has a floating base, computing torque task", robot.name());
+    dofNumber -= 6;
+  }
+
+  const Eigen::VectorXd tau_d = jointsToDofs(torque_);
+
   rbd::ForwardDynamics fd(robot.mb());
   fd.computeH(robot.mb(), robot.mbc());
   fd.computeC(robot.mb(), robot.mbc());
-  const Eigen::MatrixXd & M = fd.H();
-  const Eigen::VectorXd & Cg = fd.C();
-  const Eigen::VectorXd tau_d = jointsToDofs(torque_);
-  Eigen::VectorXd refAccel = M.ldlt().solve(tau_d - Cg);
-  PostureTask::refAccel(refAccel);
+  const Eigen::MatrixXd & full_M = fd.H();
+  const Eigen::VectorXd & full_Cg = fd.C();
+  Eigen::MatrixXd M = full_M.bottomRightCorner(dofNumber, dofNumber);
+  Eigen::VectorXd Cg = full_Cg.tail(dofNumber);
+  Eigen::VectorXd ref_accel = M.completeOrthogonalDecomposition().solve(tau_d - Cg);
+
+  PostureTask::refAccel(ref_accel);
+
   PostureTask::update(solver);
 }
 
