@@ -52,10 +52,9 @@ public:
   /** Access the full target torque */
   const std::vector<std::vector<double>> & torque() const noexcept { return torque_mc_rtc_; }
 
-  // /** Access tau external variable (const) */
-  // inline const Eigen::VectorXd & tauDesired() const noexcept { return torque_; }
-  // /** Access tau external variable */
-  // inline Eigen::VectorXd & tauDesired() { return torque_; }
+  void compensateExternalForces(bool compensate) { compensateExternalForces_ = compensate; }
+
+  bool isCompensatingExternalForces() const { return compensateExternalForces_; }
 
 protected:
   // void updateValue();
@@ -63,7 +62,7 @@ protected:
   void updateJacobian();
 
   const mc_rbdyn::Robot & robot_;
-  const bool compensateExternalForces_;
+  bool compensateExternalForces_;
 
   void eigenToMCrtcTorque();
   void mcrtcTorqueToEigen();

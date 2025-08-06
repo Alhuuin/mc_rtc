@@ -28,14 +28,21 @@ inline static mc_rtc::void_ptr_caster<mc_tvm::TorqueFunction> tvm_error{};
 
 struct TVMTorqueTask : public TrajectoryTaskGeneric
 {
-  TVMTorqueTask(const mc_rbdyn::Robots & robots, unsigned int robotIndex, double weight)
+  TVMTorqueTask(const mc_rbdyn::Robots & robots,
+                unsigned int robotIndex,
+                double weight,
+                bool compensateExternalForces = false)
   : TrajectoryTaskGeneric(robots, robotIndex, 0, weight)
   {
-    finalize<Backend::TVM, mc_tvm::TorqueFunction>(robots.robot(robotIndex));
+    finalize<Backend::TVM, mc_tvm::TorqueFunction>(robots.robot(robotIndex), compensateExternalForces);
     type_ = "torque";
     name_ = std::string("torque_") + robots.robot(robotIndex).name();
     isTorqueTask_ = true;
   }
+
+  void compensateExternalForces(bool compensate) { tvm_error(errorT)->compensateExternalForces(compensate); }
+
+  bool isCompensatingExternalForces() const { return tvm_error(errorT)->isCompensatingExternalForces(); }
 
   void update(mc_solver::QPSolver & solver) override { TrajectoryTaskGeneric::update(solver); }
 
@@ -64,9 +71,13 @@ inline static mc_rtc::void_ptr make_error(MetaTask::Backend backend,
   }
 }
 
-TorqueTask::TorqueTask(const mc_solver::QPSolver & solver, unsigned int rIndex, double weight)
+TorqueTask::TorqueTask(const mc_solver::QPSolver & solver,
+                       unsigned int rIndex,
+                       double weight,
+                       bool compensateExternalForces)
 : robots_(solver.robots()), rIndex_(rIndex), pt_(make_error(backend_, solver, rIndex, weight)), dt_(solver.dt())
 {
+  compensateExternalForces_ = compensateExternalForces;
   eval_ = this->eval();
   speed_ = Eigen::VectorXd::Zero(eval_.size());
   torque_vector_ = Eigen::VectorXd::Zero(eval_.size());
@@ -308,6 +319,29 @@ double TorqueTask::weight() const
 bool TorqueTask::inSolver() const
 {
   return inSolver_;
+}
+
+void TorqueTask::compensateExternalForces(bool compensate)
+{
+  switch(backend_)
+  {
+    case Backend::TVM:
+      tvm_error(pt_)->compensateExternalForces(compensate);
+      break;
+    default:
+      mc_rtc::log::error_and_throw("Compensating external forces is only supported in TVM backend");
+  }
+}
+
+bool TorqueTask::isCompensatingExternalForces() const
+{
+  switch(backend_)
+  {
+    case Backend::TVM:
+      return tvm_error(pt_)->isCompensatingExternalForces();
+    default:
+      mc_rtc::log::error_and_throw("Compensating external forces is only supported in TVM backend");
+  }
 }
 
 void TorqueTask::jointWeights(const std::map<std::string, double> & jws)

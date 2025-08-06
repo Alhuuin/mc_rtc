@@ -23,7 +23,10 @@ namespace mc_tasks
 struct MC_TASKS_DLLAPI TorqueTask : public MetaTask
 {
 public:
-  TorqueTask(const mc_solver::QPSolver & solver, unsigned int rIndex, double weight = 10);
+  TorqueTask(const mc_solver::QPSolver & solver,
+             unsigned int rIndex,
+             double weight = 10,
+             bool compensateExternalForces = false);
 
   void reset() override;
 
@@ -90,6 +93,12 @@ public:
   /** True if the task is in the solver */
   bool inSolver() const;
 
+  /** Set if the task is compensating external forces */
+  void compensateExternalForces(bool compensate);
+
+  /** True if the task is compensating external forces */
+  bool isCompensatingExternalForces() const;
+
 protected:
   void addToSolver(mc_solver::QPSolver & solver) override;
 
@@ -118,6 +127,9 @@ private:
   mc_rtc::void_ptr pt_;
   /** Solver timestep */
   double dt_;
+  /** True if the task is compensating external forces */
+  bool compensateExternalForces_ = false;
+
   /** Store the target torque */
   std::vector<std::vector<double>> torque_;
   /** Store the torque vector */
