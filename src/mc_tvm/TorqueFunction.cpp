@@ -44,7 +44,15 @@ void TorqueFunction::updateb() // Ax + b = 0
   // mc_rtc::log::info("[TorqueFunction] value_ = tau: {} - tau_d: {} = {}", robot_.tvmRobot().tau()->value(), torque_,
   // (robot_.tvmRobot().tau()->value() - torque_));
   b_ = robot_.tvmRobot().C() - torque_;
-  if(compensateExternalForces_) { b_ -= robot_.tvmRobot().tauExternal(); }
+  if(compensateExternalForces_)
+  {
+    Eigen::VectorXd extForces = robot_.tvmRobot().tauExternal();
+    if(robot_.mb().nrJoints() > 0 && robot_.mb().joint(0).type() == rbd::Joint::Free)
+    {
+      extForces = extForces.tail(extForces.size() - 6); // Skip the floating base joints
+    }
+    b_ -= extForces;
+  }
 }
 
 void TorqueFunction::updateJacobian()
@@ -122,6 +130,10 @@ void TorqueFunction::torque(const std::vector<std::vector<double>> & tau)
 void TorqueFunction::eigenToMCrtcTorque()
 {
   int pos = 0;
+  if(robot_.mb().nrJoints() > 0 && robot_.mb().joint(0).type() == rbd::Joint::Free)
+  {
+    pos = 6; // Skip the floating base joints
+  }
   for(int jI = j0_; jI < robot_.mb().nrJoints(); ++jI)
   {
     auto jIdx = static_cast<size_t>(jI);
@@ -137,6 +149,10 @@ void TorqueFunction::eigenToMCrtcTorque()
 void TorqueFunction::mcrtcTorqueToEigen()
 {
   int pos = 0;
+  if(robot_.mb().nrJoints() > 0 && robot_.mb().joint(0).type() == rbd::Joint::Free)
+  {
+    pos = 6; // Skip the floating base joints
+  }
   for(int jI = j0_; jI < robot_.mb().nrJoints(); ++jI)
   {
     auto jIdx = static_cast<size_t>(jI);

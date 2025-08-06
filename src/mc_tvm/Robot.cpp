@@ -246,7 +246,7 @@ void Robot::updateEF()
   {
     tau_ext_ = robot_.device<mc_rbdyn::VirtualTorqueSensor>("ExtTorquesVirtSensor").torques();
   }
-  ddq_ext_ = H().inverse() * tau_ext_;
+  ddq_ext_ = H().ldlt().solve(tau_ext_);
 }
 
 } // namespace mc_tvm
