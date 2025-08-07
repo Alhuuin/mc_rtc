@@ -370,8 +370,6 @@ void TorqueTask::target(const std::map<std::string, std::vector<double>> & joint
 {
   auto tau = torque();
 
-  size_t index = 0;
-
   for(const auto & j : joints)
   {
     if(robots_.robot(rIndex_).hasJoint(j.first))
@@ -381,8 +379,6 @@ void TorqueTask::target(const std::map<std::string, std::vector<double>> & joint
          == j.second.size())
       {
         tau[robots_.robot(rIndex_).jointIndexByName(j.first)] = j.second;
-        torque_vector_[index] = j.second[0];
-        index++;
         if(mimics_.count(j.first))
         {
           for(auto ji : mimics_.at(j.first))
@@ -399,6 +395,22 @@ void TorqueTask::target(const std::map<std::string, std::vector<double>> & joint
         }
       }
       else { mc_rtc::log::error("TorqueTask::target dof missmatch for {}", j.first); }
+    }
+  }
+  int pos = 0;
+  if(robots_.robot(rIndex_).mb().nrJoints() > 0 && robots_.robot(rIndex_).mb().joint(0).type() == rbd::Joint::Free)
+  {
+    pos = 6; // Skip the floating base joints
+  }
+  int j0_ = robots_.robot(rIndex_).mb().joint(0).type() == rbd::Joint::Free ? 1 : 0;
+  for(int jI = j0_; jI < robots_.robot(rIndex_).mb().nrJoints(); ++jI)
+  {
+    auto jIdx = static_cast<size_t>(jI);
+    const auto & j = robots_.robot(rIndex_).mb().joint(jI);
+    if(j.dof() == 1) // prismatic or revolute
+    {
+      torque_vector_[pos] = tau[jIdx][0];
+      pos++;
     }
   }
   torque(tau);
