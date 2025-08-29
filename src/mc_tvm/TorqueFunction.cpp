@@ -25,10 +25,10 @@ TorqueFunction::TorqueFunction(const mc_rbdyn::Robot & robot, bool compensateExt
   // addInputDependency<TorqueFunction>(Update::Value, robot_.tvmRobot(), Robot::Output::tau);
   addInputDependency<TorqueFunction>(Update::Jacobian, tvm_robot, Robot::Output::H);
   addInputDependency<TorqueFunction>(Update::B, tvm_robot, Robot::Output::C);
-  if(compensateExternalForces_)
-  {
-    addInputDependency<TorqueFunction>(Update::B, tvm_robot, Robot::Output::ExternalForces);
-  }
+  // if(compensateExternalForces_)
+  // {
+  addInputDependency<TorqueFunction>(Update::B, tvm_robot, Robot::Output::ExternalForces);
+  // }
   // addInputDependency<TorqueFunction>(Update::Value, robot_.tvmRobot().tau(), Output::Value);
   addVariable(tvm::dot(tvm_robot.q(), 2), true);
   // addVariable(tvm_robot.tau(), true);
@@ -44,13 +44,13 @@ void TorqueFunction::updateb() // Ax + b = 0
   // mc_rtc::log::info("[TorqueFunction] value_ = tau: {} - tau_d: {} = {}", robot_.tvmRobot().tau()->value(), torque_,
   // (robot_.tvmRobot().tau()->value() - torque_));
   b_ = robot_.tvmRobot().C() - torque_;
-  if(compensateExternalForces_)
+  if(!compensateExternalForces_)
   {
     Eigen::VectorXd extForces = robot_.tvmRobot().tauExternal();
-    if(robot_.mb().nrJoints() > 0 && robot_.mb().joint(0).type() == rbd::Joint::Free)
-    {
-      extForces = extForces.tail(extForces.size() - 6); // Skip the floating base joints
-    }
+    // if(robot_.mb().nrJoints() > 0 && robot_.mb().joint(0).type() == rbd::Joint::Free)
+    // {
+    //   extForces = extForces.tail(extForces.size() - 6); // Skip the floating base joints
+    // }
     b_ -= extForces;
   }
 }

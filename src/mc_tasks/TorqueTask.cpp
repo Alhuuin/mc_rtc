@@ -369,7 +369,6 @@ void TorqueTask::jointWeights(const std::map<std::string, double> & jws)
 void TorqueTask::target(const std::map<std::string, std::vector<double>> & joints)
 {
   auto tau = torque();
-
   for(const auto & j : joints)
   {
     if(robots_.robot(rIndex_).hasJoint(j.first))
