@@ -2,6 +2,7 @@
  * Copyright 2015-2022 CNRS-UM LIRMM, CNRS-AIST JRL
  */
 
+#include <mc_rtc/gui/Checkbox.h>
 #include <mc_tasks/TorqueTask.h>
 
 #include <mc_tasks/MetaTaskLoader.h>
@@ -430,6 +431,10 @@ void TorqueTask::addToLogger(mc_rtc::Logger & logger)
 void TorqueTask::addToGUI(mc_rtc::gui::StateBuilder & gui)
 {
   MetaTask::addToGUI(gui);
+  gui.addElement({"Tasks", name_, "External Forces"},
+                 mc_rtc::gui::Checkbox(
+                     "Compensate External Forces", [this]() { return isCompensatingExternalForces(); },
+                     [this]() { compensateExternalForces(!isCompensatingExternalForces()); }));
   gui.addElement({"Tasks", name_, "Gains"},
                  mc_rtc::gui::NumberInput(
                      "weight", [this]() { return this->weight(); }, [this](const double & w) { this->weight(w); }));

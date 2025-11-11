@@ -7,6 +7,7 @@
 
 #include <mc_rbdyn/Robot.h>
 #include <mc_tvm/Robot.h>
+#include <SpaceVecAlg/EigenTypedef.h>
 
 namespace mc_tvm
 {
@@ -16,33 +17,27 @@ TorqueFunction::TorqueFunction(const mc_rbdyn::Robot & robot, bool compensateExt
   compensateExternalForces_(compensateExternalForces), j0_(robot_.mb().joint(0).type() == rbd::Joint::Free ? 1 : 0)
 {
   registerUpdates(Update::B, &TorqueFunction::updateb);
-  registerUpdates(Update::Jacobian, &TorqueFunction::updateJacobian);
   addOutputDependency<TorqueFunction>(Output::B, Update::B);
-  addOutputDependency<TorqueFunction>(Output::Jacobian, Update::Jacobian);
   auto & tvm_robot = robot.tvmRobot();
-  addInputDependency<TorqueFunction>(Update::Jacobian, tvm_robot, Robot::Output::H);
-  addInputDependency<TorqueFunction>(Update::B, tvm_robot, Robot::Output::C);
-  addInputDependency<TorqueFunction>(Update::B, tvm_robot, Robot::Output::ExternalForces);
-  addVariable(tvm::dot(tvm_robot.q(), 2), true);
-  velocity_.setZero();
 
+  // addInputDependency<TorqueFunction>(Update::B, tvm_robot, Robot::Output::Dynamics);
+  addInputDependency<TorqueFunction>(Update::B, tvm_robot, Robot::Output::tau);
+  addVariable(tvm::dot(tvm_robot.q(), 2), true);
+  addVariable(tvm_robot.tau(), true);
+  jacobian_[tvm_robot.tau().get()] = Eigen::MatrixXd::Identity(robot_.mb().nrDof(), robot_.mb().nrDof());
+  jacobian_[tvm_robot.tau().get()].properties(tvm::internal::MatrixProperties::IDENTITY);
+  velocity_.setZero();
   reset();
 }
 
 void TorqueFunction::updateb() // Ax + b = 0
 {
-  b_ = robot_.tvmRobot().C() - torque_;
-  if(!compensateExternalForces_)
+  b_ = -torque_;
+  if(compensateExternalForces_)
   {
     Eigen::VectorXd extForces = robot_.tvmRobot().tauExternal();
-    b_ -= extForces;
+    b_ += extForces;
   }
-}
-
-void TorqueFunction::updateJacobian()
-{
-  const auto & robot = robot_.tvmRobot();
-  splitJacobian(robot.H(), robot.alphaD());
 }
 
 void TorqueFunction::reset()

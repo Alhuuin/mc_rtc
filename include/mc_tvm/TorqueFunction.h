@@ -25,7 +25,7 @@ class MC_TVM_DLLAPI TorqueFunction : public tvm::function::abstract::LinearFunct
 public:
   using Output = tvm::function::abstract::LinearFunction::Output;
   DISABLE_OUTPUTS(Output::JDot)
-  SET_UPDATES(TorqueFunction, Jacobian, B)
+  SET_UPDATES(TorqueFunction, B)
 
   /** Constructor
    *
@@ -57,9 +57,7 @@ public:
   bool isCompensatingExternalForces() const { return compensateExternalForces_; }
 
 protected:
-  // void updateValue();
   void updateb();
-  void updateJacobian();
 
   const mc_rbdyn::Robot & robot_;
   bool compensateExternalForces_;
