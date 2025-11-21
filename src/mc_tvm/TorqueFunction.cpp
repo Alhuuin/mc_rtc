@@ -19,8 +19,6 @@ TorqueFunction::TorqueFunction(const mc_rbdyn::Robot & robot, bool compensateExt
   registerUpdates(Update::B, &TorqueFunction::updateb);
   addOutputDependency<TorqueFunction>(Output::B, Update::B);
   auto & tvm_robot = robot.tvmRobot();
-
-  // addInputDependency<TorqueFunction>(Update::B, tvm_robot, Robot::Output::Dynamics);
   addInputDependency<TorqueFunction>(Update::B, tvm_robot, Robot::Output::tau);
   addVariable(tvm::dot(tvm_robot.q(), 2), true);
   addVariable(tvm_robot.tau(), true);

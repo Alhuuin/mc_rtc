@@ -312,6 +312,7 @@ set(mc_tvm_HDR
     ${mc_tvm_HDR_DIR}/PostureFunction.h
     ${mc_tvm_HDR_DIR}/TorqueFunction.h
     ${mc_tvm_HDR_DIR}/ForceFunction.h
+    ${mc_tvm_HDR_DIR}/WrenchFunction.h
     ${mc_tvm_HDR_DIR}/Robot.h
     ${mc_tvm_HDR_DIR}/RobotFrame.h
     ${mc_tvm_HDR_DIR}/TransformFunction.h
@@ -338,6 +339,7 @@ set(mc_tvm_SRC
     mc_tvm/PostureFunction.cpp
     mc_tvm/TorqueFunction.cpp
     mc_tvm/ForceFunction.cpp
+    mc_tvm/WrenchFunction.cpp
     mc_tvm/Robot.cpp
     mc_tvm/RobotFrame.cpp
     mc_tvm/TransformFunction.cpp
@@ -526,6 +528,7 @@ set(mc_tasks_SRC
     mc_tasks/MetaTaskLoader.cpp
     mc_tasks/TorqueTask.cpp
     mc_tasks/ForceTask.cpp
+    mc_tasks/WrenchTask.cpp
     mc_tasks/lipm_stabilizer/StabilizerTask.cpp
     mc_tasks/lipm_stabilizer/StabilizerTask_log_gui.cpp
     mc_tasks/lipm_stabilizer/ZMPCC.cpp
@@ -567,6 +570,7 @@ set(mc_tasks_HDR
     ../include/mc_tasks/LookAtSurfaceTask.h
     ../include/mc_tasks/TorqueTask.h
     ../include/mc_tasks/ForceTask.h
+    ../include/mc_tasks/WrenchTask.h
     ../include/mc_tasks/lipm_stabilizer/StabilizerTask.h
     ../include/mc_tasks/lipm_stabilizer/Contact.h
     ../include/mc_tasks/lipm_stabilizer/ZMPCC.h
