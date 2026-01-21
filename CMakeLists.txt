@@ -124,6 +124,7 @@ endif()
 add_project_dependency(eigen-quadprog REQUIRED)
 add_project_dependency(state-observation REQUIRED)
 add_project_dependency(ndcurves REQUIRED)
+add_project_dependency(mesh_sampling REQUIRED)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${PROJECT_SOURCE_DIR}/CMakeModules)
 
@@ -189,14 +190,25 @@ else()
   set(YAML_CPP_TARGET yaml-cpp)
 endif()
 
-# RapidJSON The code was copied from the 1.1.0 release tarball for RapidJSON
-# https://github.com/miloyip/rapidjson
-add_library(mc_rtc_3rd_party::RapidJSON INTERFACE IMPORTED)
-set_target_properties(
-  mc_rtc_3rd_party::RapidJSON
-  PROPERTIES INTERFACE_INCLUDE_DIRECTORIES
-             ${CMAKE_CURRENT_SOURCE_DIR}/3rd-party/RapidJSON
-)
+find_package(RapidJSON QUIET)
+if(RapidJSON_FOUND)
+  message("-- Found RapidJSON package")
+  add_library(mc_rtc_3rd_party::RapidJSON INTERFACE IMPORTED)
+  set_target_properties(
+    mc_rtc_3rd_party::RapidJSON PROPERTIES INTERFACE_INCLUDE_DIRECTORIES
+                                           "${RapidJSON_INCLUDE_DIRS}"
+  )
+else()
+  message("-- Using bundled RapidJSON")
+  # RapidJSON The code was copied from the 1.1.0 release tarball for RapidJSON
+  # https://github.com/miloyip/rapidjson
+  add_library(mc_rtc_3rd_party::RapidJSON INTERFACE IMPORTED)
+  set_target_properties(
+    mc_rtc_3rd_party::RapidJSON
+    PROPERTIES INTERFACE_INCLUDE_DIRECTORIES
+               ${CMAKE_CURRENT_SOURCE_DIR}/3rd-party/RapidJSON
+  )
+endif()
 
 # spdlog
 add_project_dependency(spdlog 1.5.0 REQUIRED)
@@ -207,14 +219,14 @@ macro(find_description_package PACKAGE)
   find_package(${PACKAGE} REQUIRED)
   if("${${PACKAGE}_INSTALL_PREFIX}" STREQUAL "")
     if("${${PACKAGE}_SOURCE_PREFIX}" STREQUAL "")
-       if("${${PACKAGE}_DIR}" STREQUAL "")
-         message(
+      if("${${PACKAGE}_DIR}" STREQUAL "")
+        message(
           FATAL_ERROR
             "Your ${PACKAGE} does not define where to find the data, please update."
-         )
-       else()
-         set(${PACKAGE_PATH_VAR} "${${PACKAGE}_DIR}/..")
-       endif()
+        )
+      else()
+        set(${PACKAGE_PATH_VAR} "${${PACKAGE}_DIR}/..")
+      endif()
     else()
       set(${PACKAGE_PATH_VAR} "${${PACKAGE}_SOURCE_PREFIX}")
     endif()
@@ -253,6 +265,13 @@ mc_rtc_set_prefix(CONTROLLER mc_controller)
 
 set(MC_RTC_BINDIR "${CMAKE_INSTALL_FULL_BINDIR}")
 set(MC_RTC_LIBDIR "${CMAKE_INSTALL_FULL_LIBDIR}")
+
+find_package(mc_rtc_3rd_party_ros QUIET)
+if(TARGET mc_rtc_3rd_party::ROS)
+  set(MC_RTC_HAS_ROS_SUPPORT "true")
+else()
+  set(MC_RTC_HAS_ROS_SUPPORT "false")
+endif()
 
 configure_file(
   ${PROJECT_SOURCE_DIR}/include/mc_rtc/config.h.cmake.in
