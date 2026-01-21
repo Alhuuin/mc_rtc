@@ -55,20 +55,16 @@ void ROSPlugin::after(mc_control::MCGlobalController & controller)
   };
   update_robots("control/", controller.controller().robots());
   if(publish_real) { update_robots("real/", controller.controller().realRobots()); }
-
-  mc_rtc::ROSBridge::remove_extra_robot_publishers(controller.controller().robots());
-}
-
-ROSPlugin::~ROSPlugin()
-{
-  mc_rtc::ROSBridge::stop_robot_publisher("control");
-  mc_rtc::ROSBridge::stop_robot_publisher("real");
-  for(size_t i = 0; i < published_topics; ++i)
+  ROSPlugin::~ROSPlugin()
   {
-    mc_rtc::ROSBridge::stop_robot_publisher("control/env_" + std::to_string(i + 1));
-    mc_rtc::ROSBridge::stop_robot_publisher("real/env_" + std::to_string(i + 1));
+    mc_rtc::ROSBridge::stop_robot_publisher("control");
+    mc_rtc::ROSBridge::stop_robot_publisher("real");
+    for(size_t i = 0; i < published_topics; ++i)
+    {
+      mc_rtc::ROSBridge::stop_robot_publisher("control/env_" + std::to_string(i + 1));
+      mc_rtc::ROSBridge::stop_robot_publisher("real/env_" + std::to_string(i + 1));
+    }
   }
-}
 
 } // namespace mc_plugin
 

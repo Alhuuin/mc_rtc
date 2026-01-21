@@ -2,6 +2,7 @@
  * Copyright 2015-2022 CNRS-UM LIRMM, CNRS-AIST JRL
  */
 
+#include <mc_rtc/gui/Checkbox.h>
 #include <mc_tasks/TorqueTask.h>
 
 #include <mc_tasks/MetaTaskLoader.h>
@@ -51,7 +52,6 @@ struct TVMTorqueTask : public TrajectoryTaskGeneric
 
 } // namespace details
 
-// inline static mc_rtc::void_ptr_caster<tasks::qp::TorqueTask> tasks_error{};
 inline static mc_rtc::void_ptr_caster<details::TVMTorqueTask> tvm_error{};
 
 inline static mc_rtc::void_ptr make_error(MetaTask::Backend backend,
@@ -197,7 +197,12 @@ Eigen::VectorXd TorqueTask::eval() const
     //   return pt.dimWeight().asDiagonal() * pt.eval();
     // }
     case Backend::TVM:
+    {
+      // auto & pt = *tvm_error(pt_);
+      // return pt.dimWeight().asDiagonal() * pt.eval();
       return tvm_error(pt_)->eval();
+    }
+
     default:
       mc_rtc::log::error_and_throw("Not implemented");
   }
@@ -394,7 +399,10 @@ void TorqueTask::target(const std::map<std::string, std::vector<double>> & joint
           }
         }
       }
-      else { mc_rtc::log::error("TorqueTask::target dof missmatch for {}", j.first); }
+      else
+      {
+        mc_rtc::log::error("TorqueTask::target dof missmatch for {}", j.first);
+      }
     }
   }
   int pos = 0;
@@ -426,6 +434,10 @@ void TorqueTask::addToLogger(mc_rtc::Logger & logger)
 void TorqueTask::addToGUI(mc_rtc::gui::StateBuilder & gui)
 {
   MetaTask::addToGUI(gui);
+  gui.addElement({"Tasks", name_, "External Forces"},
+                 mc_rtc::gui::Checkbox(
+                     "Compensate External Forces", [this]() { return isCompensatingExternalForces(); },
+                     [this]() { compensateExternalForces(!isCompensatingExternalForces()); }));
   gui.addElement({"Tasks", name_, "Gains"},
                  mc_rtc::gui::NumberInput(
                      "weight", [this]() { return this->weight(); }, [this](const double & w) { this->weight(w); }));

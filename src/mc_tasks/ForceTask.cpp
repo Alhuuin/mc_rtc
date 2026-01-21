@@ -1,38 +1,46 @@
 /*
- * Copyright 2015-2022 CNRS-UM LIRMM, CNRS-AIST JRL
+ * Copyright 2015-2019 CNRS-UM LIRMM, CNRS-AIST JRL
  */
 
 #include <mc_tasks/ForceTask.h>
 
 #include <mc_tasks/MetaTaskLoader.h>
+#include <mc_tasks/TrajectoryTaskGeneric.h>
+
+#include <mc_solver/TVMQPSolver.h>
+// #include <mc_solver/TasksQPSolver.h>
+
 #include <mc_tvm/ForceFunction.h>
+#include <mc_tvm/Robot.h>
 
-#include <mc_solver/TasksQPSolver.h>
+#include <mc_rbdyn/configuration_io.h>
 
-#include <mc_rbdyn/rpy_utils.h>
-
-#include <mc_rbdyn/hat.h>
-#include <mc_rtc/ConfigurationHelpers.h>
-#include <mc_rtc/deprecated.h>
 #include <mc_rtc/gui/Force.h>
 #include <mc_rtc/gui/NumberInput.h>
+#include <RBDyn/MultiBodyConfig.h>
+#include <SpaceVecAlg/SpaceVecAlg>
+#include <Eigen/src/Core/Matrix.h>
+#include <vector>
 
 namespace mc_tasks
 {
-static inline mc_rtc::void_ptr_caster<mc_tvm::ForceFunction> tvm_error{};
+
 namespace details
 {
+
 inline static mc_rtc::void_ptr_caster<mc_tvm::ForceFunction> tvm_error{};
+
 struct TVMForceTask : public TrajectoryTaskGeneric
 {
   TVMForceTask(const mc_rbdyn::Robots & robots,
-               const mc_rbdyn::RobotFrame & frame,
                unsigned int robotIndex,
+               Eigen::MatrixXd jTransposePseudoInverse,
                double weight,
                bool compensateExternalForces = false)
   : TrajectoryTaskGeneric(robots, robotIndex, 0, weight)
   {
-    finalize<Backend::TVM, mc_tvm::ForceFunction>(robots.robot(robotIndex), frame, compensateExternalForces);
+    finalize<Backend::TVM, mc_tvm::ForceFunction>(robots.robot(robotIndex), jTransposePseudoInverse,
+                                                  compensateExternalForces);
     type_ = "force";
     name_ = std::string("force_") + robots.robot(robotIndex).name();
     isNoneTaskDynamics_ = true;
@@ -44,61 +52,290 @@ struct TVMForceTask : public TrajectoryTaskGeneric
 
   void update(mc_solver::QPSolver & solver) override { TrajectoryTaskGeneric::update(solver); }
 
-  void force(const sva::ForceVecd & p) { tvm_error(errorT)->force(p); }
+  void force(const Eigen::VectorXd & p) { tvm_error(errorT)->forceTarget(p); }
+
+  Eigen::MatrixXd getJacobianTPseudoInverse() const { return tvm_error(errorT)->getJacobianT(); }
+
+  void setJacobianTPseudoInverse(const Eigen::MatrixXd & jTransposePseudoInverse)
+  {
+    tvm_error(errorT)->setJacobianTPseudoInverse(jTransposePseudoInverse);
+  }
 };
+
 } // namespace details
 
-ForceTask::ForceTask(const std::string & frameName,
+inline static mc_rtc::void_ptr_caster<details::TVMForceTask> tvm_error{};
+
+inline static mc_rtc::void_ptr make_error(MetaTask::Backend backend,
+                                          const mc_solver::QPSolver & solver,
+                                          Eigen::MatrixXd jTransposePseudoInverse,
+                                          unsigned int rIndex,
+                                          double weight,
+                                          bool compensateExternalForces)
+{
+  switch(backend)
+  {
+    // case MetaTask::Backend::Tasks:
+    //   return mc_rtc::make_void_ptr<tasks::qp::ForceTask>(solver.robots().mbs(), static_cast<int>(rIndex),
+    //                                                        solver.robot(rIndex).mbc().tau, weight);
+    case MetaTask::Backend::TVM:
+      return mc_rtc::make_void_ptr<details::TVMForceTask>(solver.robots(), rIndex, jTransposePseudoInverse, weight,
+                                                          compensateExternalForces);
+    default:
+      mc_rtc::log::error_and_throw("[ForceTask] Not implemented for solver backend: {}", backend);
+  }
+}
+
+ForceTask::ForceTask(const mc_solver::QPSolver & solver,
                      const mc_rbdyn::Robots & robots,
                      unsigned int robotIndex,
+                     Eigen::MatrixXd jTransposePseudoInverse,
                      double weight,
                      bool compensateExternalForces)
-: ForceTask(robots.robot(robotIndex).frame(frameName), weight, compensateExternalForces)
+: robots_(robots), jTransposePseudoInverse_(jTransposePseudoInverse), rIndex_(robotIndex),
+  pt_(make_error(backend_, solver, jTransposePseudoInverse, robotIndex, weight, compensateExternalForces)),
+  dt_(solver.dt()), compensateExternalForces_(compensateExternalForces)
 {
+  reset();
+  eval_ = this->eval();
+  speed_ = Eigen::VectorXd::Zero(eval_.size());
+  type_ = "force";
+  name_ = "force_" + robots_.robot(rIndex_).name();
+  name(name_);
+}
+
+void ForceTask::update(mc_solver::QPSolver & solver)
+{
+  switch(backend_)
+  {
+    // case Backend::Tasks:
+    // {
+    //   const auto & pt = *tasks_error(pt_);
+    //   speed_ = pt.dimWeight().asDiagonal() * (pt.eval() - eval_) / dt_;
+    //   eval_ = pt.eval();
+    //   break;
+    // }
+    case Backend::TVM:
+    {
+      auto & pt = *tvm_error(pt_);
+      pt.update(solver);
+      speed_ = (pt.eval() - eval_) / dt_;
+      eval_ = pt.dimWeight().asDiagonal() * pt.eval();
+      break;
+    }
+    default:
+      break;
+  }
 }
 
 void ForceTask::reset()
 {
-  TrajectoryTaskGeneric::reset();
+  target_ = Eigen::VectorXd::Zero(jTransposePseudoInverse_.rows());
+  setForceTarget(target_);
+}
+
+// Eigen::VectorXd ForceTask::getCurrentForce() const
+// {
+//   Eigen::Vector6d currentForce;
+//   Eigen::VectorXd currentTorque = rbd::dofToVector(robots_.robot(frame_.robot().robotIndex()).mb(),
+//   robots_.robot(frame_.robot().robotIndex()).mbc().jointTorque);
+
+//   switch(backend_)
+//   {
+//     case Backend::TVM:
+//     {
+//       Eigen::MatrixXd jac =  tvm_error(pt_)->getJacobian();
+//       currentForce = jac.completeOrthogonalDecomposition().solve(currentTorque);
+//       return Eigen::VectorXd(currentForce.head<3>(), currentForce.tail<3>());
+//     }
+//     default:
+//     {
+//       mc_rtc::log::error_and_throw("Not implemented");
+//       return Eigen::VectorXd::Zero();
+//     }
+//   }
+// }
+
+void ForceTask::removeFromSolver(mc_solver::QPSolver & solver)
+{
+  if(!inSolver_) { return; }
+  inSolver_ = false;
   switch(backend_)
   {
+    // case Backend::Tasks:
+    //   tasks_solver(solver).removeTask(tasks_error(pt_));
+    //   break;
     case Backend::TVM:
-      tvm_error(errorT)->reset();
+      MetaTask::removeFromSolver(*tvm_error(pt_), solver);
       break;
     default:
       break;
   }
 }
 
-/*! \brief Load parameters from a Configuration object */
-void ForceTask::load(mc_solver::QPSolver & solver, const mc_rtc::Configuration & config)
+void ForceTask::addToSolver(mc_solver::QPSolver & solver)
 {
-  if(config.has("weight")) { weight(config("weight")); }
-  if(config.has("compensateExternalForces")) { compensateExternalForces(config("compensateExternalForces")); }
-  TrajectoryBase::load(solver, config);
+  if(inSolver_) { return; }
+  inSolver_ = true;
+  switch(backend_)
+  {
+    // case Backend::Tasks:
+    //   tasks_solver(solver).addTask(tasks_error(pt_));
+    //   break;
+    case Backend::TVM:
+      MetaTask::addToSolver(*tvm_error(pt_), solver);
+      break;
+    default:
+      break;
+  }
 }
 
-sva::ForceVecd ForceTask::target() const
+void ForceTask::selectActiveJoints(mc_solver::QPSolver & solver,
+                                   const std::vector<std::string> & activeJointsName,
+                                   const std::map<std::string, std::vector<std::array<int, 2>>> & activeDofs)
 {
   switch(backend_)
   {
     case Backend::TVM:
-      return tvm_error(errorT)->force();
+      tvm_error(pt_)->selectActiveJoints(solver, activeJointsName, activeDofs);
+      break;
+    default:
+      mc_rtc::log::error_and_throw("selectActiveJoints not implemented for backend {}", backend_);
+  }
+}
+
+void ForceTask::selectUnactiveJoints(mc_solver::QPSolver & solver,
+                                     const std::vector<std::string> & unactiveJointsName,
+                                     const std::map<std::string, std::vector<std::array<int, 2>>> & unactiveDofs)
+{
+  switch(backend_)
+  {
+    case Backend::TVM:
+      tvm_error(pt_)->selectUnactiveJoints(solver, unactiveJointsName, unactiveDofs);
+      break;
+    default:
+      mc_rtc::log::error_and_throw("selectUnactiveJoints not implemented for backend {}", backend_);
+  }
+}
+
+void ForceTask::resetJointsSelector(mc_solver::QPSolver & solver)
+{
+  switch(backend_)
+  {
+    case Backend::TVM:
+      tvm_error(pt_)->resetJointsSelector(solver);
+      break;
+    default:
+      mc_rtc::log::error_and_throw("resetJointsSelector not implemented for backend {}", backend_);
+  }
+}
+
+void ForceTask::addForceTarget(const Eigen::VectorXd & dtr)
+{
+  setForceTarget(target_ + dtr);
+}
+
+void ForceTask::setForceTarget(const Eigen::VectorXd & tf)
+{
+  target_ = tf;
+  switch(backend_)
+  {
+    // case Backend::Tasks:
+    //   tasks_error(pt_)->force(p);
+    //   break;
+    case Backend::TVM:
+      tvm_error(pt_)->force(tf);
+      break;
+    default:
+      break;
+  }
+}
+
+Eigen::VectorXd ForceTask::getForceTarget() const
+{
+  return target_;
+}
+
+void ForceTask::dimWeight(const Eigen::VectorXd & dimW)
+{
+  switch(backend_)
+  {
+    // case Backend::Tasks:
+    //   tasks_error(pt_)->dimWeight(dimW);
+    //   break;
+    case Backend::TVM:
+      tvm_error(pt_)->dimWeight(dimW);
+      break;
+    default:
+      break;
+  }
+}
+
+Eigen::VectorXd ForceTask::dimWeight() const
+{
+  switch(backend_)
+  {
+    // case Backend::Tasks:
+    //   return tasks_error(pt_)->dimWeight();
+    case Backend::TVM:
+      return tvm_error(pt_)->dimWeight();
     default:
       mc_rtc::log::error_and_throw("Not implemented");
   }
 }
 
-void ForceTask::target(const sva::ForceVecd & force)
+Eigen::VectorXd ForceTask::eval() const
 {
   switch(backend_)
   {
+    // case Backend::Tasks:
+    // {
+    //   auto & pt = *tasks_error(pt_);
+    //   return pt.dimWeight().asDiagonal() * pt.eval();
+    // }
     case Backend::TVM:
-      tvm_error(errorT)->force(force);
+      return tvm_error(pt_)->eval();
+    default:
+      mc_rtc::log::error_and_throw("Not implemented");
+  }
+}
+
+Eigen::VectorXd ForceTask::speed() const
+{
+  return speed_;
+}
+
+void ForceTask::weight(double w)
+{
+  switch(backend_)
+  {
+    // case Backend::Tasks:
+    //   tasks_error(pt_)->weight(w);
+    //   break;
+    case Backend::TVM:
+      tvm_error(pt_)->weight(w);
       break;
     default:
       break;
   }
+}
+
+double ForceTask::weight() const
+{
+  switch(backend_)
+  {
+    // case Backend::Tasks:
+    //   return tasks_error(pt_)->weight();
+    case Backend::TVM:
+      return tvm_error(pt_)->weight();
+    default:
+      mc_rtc::log::error_and_throw("Not implemented");
+  }
+}
+
+bool ForceTask::inSolver() const
+{
+  return inSolver_;
 }
 
 void ForceTask::compensateExternalForces(bool compensate)
@@ -106,7 +343,7 @@ void ForceTask::compensateExternalForces(bool compensate)
   switch(backend_)
   {
     case Backend::TVM:
-      tvm_error(errorT)->compensateExternalForces(compensate);
+      tvm_error(pt_)->compensateExternalForces(compensate);
       break;
     default:
       mc_rtc::log::error_and_throw("Compensating external forces is only supported in TVM backend");
@@ -118,100 +355,66 @@ bool ForceTask::isCompensatingExternalForces() const
   switch(backend_)
   {
     case Backend::TVM:
-      return tvm_error(errorT)->isCompensatingExternalForces();
+      return tvm_error(pt_)->isCompensatingExternalForces();
     default:
       mc_rtc::log::error_and_throw("Compensating external forces is only supported in TVM backend");
   }
 }
 
-void ForceTask::addToLogger(mc_rtc::Logger & logger)
+void ForceTask::setJacobianTPseudoInverse(const Eigen::MatrixXd & jTransposePseudoInverse)
 {
-  TrajectoryBase::addToLogger(logger);
-  logger.addLogEntry(name_ + "_force", this, [this]() { return frame_->wrench(); });
-  logger.addLogEntry(name_ + "_target_force", this, [this]() { return target(); });
+  switch(backend_)
+  {
+    case Backend::TVM:
+      tvm_error(pt_)->setJacobianTPseudoInverse(jTransposePseudoInverse);
+      break;
+    default:
+      mc_rtc::log::error_and_throw("Setting Jacobian is only supported in TVM backend");
+  }
 }
 
-// std::function<bool(const mc_tasks::MetaTask &, std::string &)> ForceTask::buildCompletionCriteria(
-//     double dt,
-//     const mc_rtc::Configuration & config) const
-// {
-//   if(config.has("wrench"))
-//   {
-//     if(!frame_->hasForceSensor())
-//     {
-//       mc_rtc::log::error_and_throw<std::invalid_argument>("[{}] Attempted to use \"wrench\" as completion criteria
-//       but "
-//                                                           "frame \"{}\" is not attached to a force sensor",
-//                                                           name(), frame_->name());
-//     }
-//     sva::ForceVecd target_w = config("wrench");
-//     Eigen::Vector6d target = target_w.vector();
-//     Eigen::Vector6d dof = Eigen::Vector6d::Ones();
-//     for(int i = 0; i < 6; ++i)
-//     {
-//       if(std::isnan(target(i)))
-//       {
-//         dof(i) = 0.;
-//         target(i) = 0.;
-//       }
-//       else if(target(i) < 0) { dof(i) = -1.; }
-//     }
-//     return [dof, target](const mc_tasks::MetaTask & t, std::string & out)
-//     {
-//       const auto & self = static_cast<const mc_tasks::ForceTask &>(t);
-//       Eigen::Vector6d w = self.robots.robot(self.rIndex).surfaceWrench(self.surface()).vector();
-//       for(int i = 0; i < 6; ++i)
-//       {
-//         if(dof(i) * fabs(w(i)) < target(i)) { return false; }
-//       }
-//       out += "wrench";
-//       return true;
-//     };
-//   }
-//   return MetaTask::buildCompletionCriteria(dt, config);
-// }
+Eigen::MatrixXd ForceTask::getJacobianTPseudoInverse() const
+{
+  switch(backend_)
+  {
+    case Backend::TVM:
+      return tvm_error(pt_)->getJacobianTPseudoInverse();
+    default:
+      mc_rtc::log::error_and_throw("Getting Jacobian is only supported in TVM backend");
+  }
+}
+
+void ForceTask::load(mc_solver::QPSolver & solver, const mc_rtc::Configuration & config)
+{
+  MetaTask::load(solver, config);
+  if(config.has("weight")) { weight(config("weight")); }
+}
+
+void ForceTask::addToLogger(mc_rtc::Logger & logger)
+{
+  MC_RTC_LOG_HELPER(name_ + "_target", target_);
+  // logger.addLogEntry(name_, this, [this]() { return frame_.position(); });
+}
+
+void ForceTask::removeFromLogger(mc_rtc::Logger & logger)
+{
+  MetaTask::removeFromLogger(logger);
+}
 
 void ForceTask::addToGUI(mc_rtc::gui::StateBuilder & gui)
 {
-  TrajectoryTaskGeneric::addToGUI(gui);
-  gui.addElement({"Tasks", name_}, mc_rtc::gui::Force(
-                                       "Force Target", [this]() { return this->wrench(); },
-                                       [this]() -> sva::PTransformd { return frame_->position(); }));
+  MetaTask::addToGUI(gui);
+  // gui.addElement({"Tasks", name_}, mc_rtc::gui::Force(
+  //                                      "Force Target", [this]() { return this->getForceTarget(); },
+  //                                      [this]() -> sva::PTransformd { return frame_.position(); }));
   gui.addElement({"Tasks", name_, "Gains"},
                  mc_rtc::gui::NumberInput(
                      "weight", [this]() { return this->weight(); }, [this](const double & w) { this->weight(w); }));
 }
 
-} // namespace mc_tasks
-
-namespace
+void ForceTask::name(const std::string & name)
 {
-
-static mc_tasks::MetaTaskPtr loadForceTask(mc_solver::QPSolver & solver, const mc_rtc::Configuration & config)
-{
-  const auto robotIndex = robotIndexFromConfig(config, solver.robots(), "transform");
-  const auto & robot = solver.robots().robot(robotIndex);
-  const auto & frame = [&]() -> const mc_rbdyn::RobotFrame &
-  {
-    if(config.has("surface"))
-    {
-      mc_rtc::log::deprecated("ForceTask", "surface", "frame");
-      return robot.frame(config("surface"));
-    }
-    else { return robot.frame(config("frame")); }
-  }();
-  auto t = std::make_shared<mc_tasks::ForceTask>(frame);
-  t->load(solver, config);
-  return t;
+  MetaTask::name(name);
 }
 
-static auto reg_dep = mc_tasks::MetaTaskLoader::register_load_function(
-    "surfaceTransform",
-    [](mc_solver::QPSolver & solver, const mc_rtc::Configuration & config)
-    {
-      mc_rtc::log::deprecated("TaskLoading", "surfaceTransform", "transform");
-      return loadForceTask(solver, config);
-    });
-static auto reg = mc_tasks::MetaTaskLoader::register_load_function("transform", &loadForceTask);
-
-} // namespace
+} // namespace mc_tasks
