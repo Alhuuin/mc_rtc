@@ -20,11 +20,11 @@ TorqueFunction::TorqueFunction(const mc_rbdyn::Robot & robot, bool compensateExt
   addOutputDependency<TorqueFunction>(Output::B, Update::B);
   auto & tvm_robot = robot.tvmRobot();
   addInputDependency<TorqueFunction>(Update::B, tvm_robot, Robot::Output::tau);
-  addVariable(tvm::dot(tvm_robot.q(), 2), true);
+  addVariable(tvm::dot(tvm_robot.q(), 2), true); // x
   addVariable(tvm_robot.tau(), true);
   jacobian_[tvm_robot.tau().get()] = Eigen::MatrixXd::Identity(robot_.mb().nrDof(), robot_.mb().nrDof());
-  jacobian_[tvm_robot.tau().get()].properties(tvm::internal::MatrixProperties::IDENTITY);
-  velocity_.setZero();
+  jacobian_[tvm_robot.tau().get()].properties(tvm::internal::MatrixProperties::IDENTITY); // A
+  // velocity_.setZero();
   reset();
 }
 
