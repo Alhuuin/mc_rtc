@@ -216,25 +216,23 @@ add_project_dependency(spdlog 1.5.0 REQUIRED)
 macro(find_description_package PACKAGE)
   set(PACKAGE_PATH_VAR "${PACKAGE}_PATH")
   string(TOUPPER "${PACKAGE_PATH_VAR}" PACKAGE_PATH_VAR)
-  find_package(${PACKAGE} REQUIRED)
-  if("${${PACKAGE}_INSTALL_PREFIX}" STREQUAL "")
-    if("${${PACKAGE}_SOURCE_PREFIX}" STREQUAL "")
-      if("${${PACKAGE}_DIR}" STREQUAL "")
+  if(NOT DEFINED ${PACKAGE_PATH_VAR})
+    find_package(${PACKAGE} REQUIRED)
+    if("${${PACKAGE}_INSTALL_PREFIX}" STREQUAL "")
+      if("${${PACKAGE}_SOURCE_PREFIX}" STREQUAL "")
         message(
           FATAL_ERROR
             "Your ${PACKAGE} does not define where to find the data, please update."
         )
       else()
-        set(${PACKAGE_PATH_VAR} "${${PACKAGE}_DIR}/..")
+        set(${PACKAGE_PATH_VAR} "${${PACKAGE}_SOURCE_PREFIX}")
       endif()
     else()
-      set(${PACKAGE_PATH_VAR} "${${PACKAGE}_SOURCE_PREFIX}")
+      set(${PACKAGE_PATH_VAR} "${${PACKAGE}_INSTALL_PREFIX}")
     endif()
-  else()
-    set(${PACKAGE_PATH_VAR} "${${PACKAGE}_INSTALL_PREFIX}")
+    # Cleanup the path provided by CMake
+    get_filename_component(${PACKAGE_PATH_VAR} "${${PACKAGE_PATH_VAR}}" REALPATH)
   endif()
-  # Cleanup the path provided by CMake
-  get_filename_component(${PACKAGE_PATH_VAR} "${${PACKAGE_PATH_VAR}}" REALPATH)
   message("-- Found ${PACKAGE}: ${${PACKAGE_PATH_VAR}}")
 endmacro()
 
