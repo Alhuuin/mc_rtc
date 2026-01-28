@@ -399,7 +399,10 @@ void TorqueTask::target(const std::map<std::string, std::vector<double>> & joint
           }
         }
       }
-      else { mc_rtc::log::error("TorqueTask::target dof missmatch for {}", j.first); }
+      else
+      {
+        mc_rtc::log::error("TorqueTask::target dof missmatch for {}", j.first);
+      }
     }
   }
   int pos = 0;
