@@ -113,6 +113,13 @@ public:
 
   void removeFromSolverImpl(QPSolver & solver) override;
 
+  /** Get the current distance for a specific collision pair.
+   * \param b1Name Name of the first convex
+   * \param b2Name Name of the second convex
+   * \return The distance in meters. Returns infinity if the collision is not found.
+   */
+  double getDistance(const std::string & b1Name, const std::string & b2Name) const;
+
 public:
   /** Holds the constraint implementation
    *
