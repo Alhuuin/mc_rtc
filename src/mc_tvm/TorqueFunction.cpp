@@ -12,9 +12,10 @@
 namespace mc_tvm
 {
 
-TorqueFunction::TorqueFunction(const mc_rbdyn::Robot & robot, bool compensateExternalForces)
+TorqueFunction::TorqueFunction(const mc_rbdyn::Robot & robot, bool compensateExternalForces, bool compensateGravity)
 : tvm::function::abstract::LinearFunction(robot.mb().nrDof()), robot_(robot),
-  compensateExternalForces_(compensateExternalForces), j0_(robot_.mb().joint(0).type() == rbd::Joint::Free ? 1 : 0)
+  compensateExternalForces_(compensateExternalForces), compensateGravity_(compensateGravity),
+  j0_(robot_.mb().joint(0).type() == rbd::Joint::Free ? 1 : 0)
 {
   registerUpdates(Update::B, &TorqueFunction::updateb);
   addOutputDependency<TorqueFunction>(Output::B, Update::B);
@@ -35,6 +36,11 @@ void TorqueFunction::updateb() // Ax + b = 0
   {
     Eigen::VectorXd extForces = robot_.tvmRobot().tauExternal();
     b_ += extForces;
+  }
+  if(compensateGravity_)
+  {
+    Eigen::VectorXd gravityComp = robot_.tvmRobot().C();
+    b_ += gravityComp;
   }
 }
 

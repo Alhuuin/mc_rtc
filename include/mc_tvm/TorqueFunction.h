@@ -32,7 +32,7 @@ public:
    * Set the objective to the current torque of robot
    *
    */
-  TorqueFunction(const mc_rbdyn::Robot & robot, bool compensateExternalForces = false);
+  TorqueFunction(const mc_rbdyn::Robot & robot, bool compensateExternalForces = false, bool compensateGravity = false);
 
   /** Set the target torque to the current robot's torque */
   void reset();
@@ -46,21 +46,24 @@ public:
    */
   void torque(const std::string & j, const std::vector<double> & tau);
 
-  /** Set the fully body torque */
+  /** Set the full body torque */
   void torque(const std::vector<std::vector<double>> & tau);
 
   /** Access the full target torque */
   const std::vector<std::vector<double>> & torque() const noexcept { return torque_mc_rtc_; }
 
-  void compensateExternalForces(bool compensate) { compensateExternalForces_ = compensate; }
+  void setCompensateExternalForces(bool compensate) { compensateExternalForces_ = compensate; }
+  bool isCompensatingExternalForces() { return compensateExternalForces_; }
 
-  bool isCompensatingExternalForces() const { return compensateExternalForces_; }
+  void setCompensateGravity(bool compensate) { compensateGravity_ = compensate; }
+  bool isCompensatingGravity() { return compensateGravity_; }
 
 protected:
   void updateb();
 
   const mc_rbdyn::Robot & robot_;
   bool compensateExternalForces_;
+  bool compensateGravity_;
 
   void eigenToMCrtcTorque();
   void mcrtcTorqueToEigen();

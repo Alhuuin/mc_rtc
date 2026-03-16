@@ -32,18 +32,24 @@ struct TVMTorqueTask : public TrajectoryTaskGeneric
   TVMTorqueTask(const mc_rbdyn::Robots & robots,
                 unsigned int robotIndex,
                 double weight,
-                bool compensateExternalForces = false)
+                bool compensateExternalForces = false,
+                bool compensateGravity = false)
   : TrajectoryTaskGeneric(robots, robotIndex, 0, weight)
   {
-    finalize<Backend::TVM, mc_tvm::TorqueFunction>(robots.robot(robotIndex), compensateExternalForces);
+    finalize<Backend::TVM, mc_tvm::TorqueFunction>(robots.robot(robotIndex), compensateExternalForces,
+                                                   compensateGravity);
     type_ = "torque";
     name_ = std::string("torque_") + robots.robot(robotIndex).name();
     isNoneTaskDynamics_ = true;
   }
 
-  void compensateExternalForces(bool compensate) { tvm_error(errorT)->compensateExternalForces(compensate); }
+  void setCompensateExternalForces(bool compensate) { tvm_error(errorT)->setCompensateExternalForces(compensate); }
 
-  bool isCompensatingExternalForces() const { return tvm_error(errorT)->isCompensatingExternalForces(); }
+  bool isCompensatingExternalForces() { return tvm_error(errorT)->isCompensatingExternalForces(); }
+
+  void setCompensateGravity(bool compensate) { tvm_error(errorT)->setCompensateGravity(compensate); }
+
+  bool isCompensatingGravity() { return tvm_error(errorT)->isCompensatingGravity(); }
 
   void update(mc_solver::QPSolver & solver) override { TrajectoryTaskGeneric::update(solver); }
 
@@ -74,10 +80,13 @@ inline static mc_rtc::void_ptr make_error(MetaTask::Backend backend,
 TorqueTask::TorqueTask(const mc_solver::QPSolver & solver,
                        unsigned int rIndex,
                        double weight,
-                       bool compensateExternalForces)
+                       bool compensateExternalForces,
+                       bool compensateGravity)
 : robots_(solver.robots()), rIndex_(rIndex), pt_(make_error(backend_, solver, rIndex, weight)), dt_(solver.dt())
 {
   compensateExternalForces_ = compensateExternalForces;
+  compensateGravity_ = compensateGravity;
+
   eval_ = this->eval();
   speed_ = Eigen::VectorXd::Zero(eval_.size());
   torque_vector_ = Eigen::VectorXd::Zero(eval_.size());
@@ -326,19 +335,19 @@ bool TorqueTask::inSolver() const
   return inSolver_;
 }
 
-void TorqueTask::compensateExternalForces(bool compensate)
+void TorqueTask::setCompensateExternalForces(bool compensate)
 {
   switch(backend_)
   {
     case Backend::TVM:
-      tvm_error(pt_)->compensateExternalForces(compensate);
+      tvm_error(pt_)->setCompensateExternalForces(compensate);
       break;
     default:
       mc_rtc::log::error_and_throw("Compensating external forces is only supported in TVM backend");
   }
 }
 
-bool TorqueTask::isCompensatingExternalForces() const
+bool TorqueTask::isCompensatingExternalForces()
 {
   switch(backend_)
   {
@@ -346,6 +355,29 @@ bool TorqueTask::isCompensatingExternalForces() const
       return tvm_error(pt_)->isCompensatingExternalForces();
     default:
       mc_rtc::log::error_and_throw("Compensating external forces is only supported in TVM backend");
+  }
+}
+
+void TorqueTask::setCompensateGravity(bool compensate)
+{
+  switch(backend_)
+  {
+    case Backend::TVM:
+      tvm_error(pt_)->setCompensateGravity(compensate);
+      break;
+    default:
+      mc_rtc::log::error_and_throw("Compensating gravity is only supported in TVM backend");
+  }
+}
+
+bool TorqueTask::isCompensatingGravity()
+{
+  switch(backend_)
+  {
+    case Backend::TVM:
+      return tvm_error(pt_)->isCompensatingGravity();
+    default:
+      mc_rtc::log::error_and_throw("Compensating gravity is only supported in TVM backend");
   }
 }
 
@@ -429,15 +461,21 @@ void TorqueTask::addToLogger(mc_rtc::Logger & logger)
   logger.addLogEntry(name_ + "_eval", this, [this]() { return eval(); });
   logger.addLogEntry(name_ + "_speed", this, [this]() -> const Eigen::VectorXd & { return speed_; });
   logger.addLogEntry(name_ + "_torque", this, [this]() -> const Eigen::VectorXd & { return torque_vector_; });
+  logger.addLogEntry(name_ + "_compensateExternalForces", this, [this]() { return isCompensatingExternalForces(); });
+  logger.addLogEntry(name_ + "_compensateGravity", this, [this]() { return isCompensatingGravity(); });
 }
 
 void TorqueTask::addToGUI(mc_rtc::gui::StateBuilder & gui)
 {
   MetaTask::addToGUI(gui);
-  gui.addElement({"Tasks", name_, "External Forces"},
+  gui.addElement({"Tasks", name_, "Additional Forces"},
                  mc_rtc::gui::Checkbox(
                      "Compensate External Forces", [this]() { return isCompensatingExternalForces(); },
-                     [this]() { compensateExternalForces(!isCompensatingExternalForces()); }));
+                     [this]() { setCompensateExternalForces(!isCompensatingExternalForces()); }));
+  gui.addElement({"Tasks", name_, "Additional Forces"},
+                 mc_rtc::gui::Checkbox(
+                     "Compensate Gravity", [this]() { return isCompensatingGravity(); },
+                     [this]() { setCompensateGravity(!isCompensatingGravity()); }));
   gui.addElement({"Tasks", name_, "Gains"},
                  mc_rtc::gui::NumberInput(
                      "weight", [this]() { return this->weight(); }, [this](const double & w) { this->weight(w); }));

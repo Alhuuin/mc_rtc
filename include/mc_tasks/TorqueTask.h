@@ -13,11 +13,21 @@
 namespace mc_tasks
 {
 
-/** A torque task for a given robot
+/*! \brief Torque tracking task based on the robot dynamic model.
  *
- * Note that eval/speed/dimWeight have different dimensions based on the backend:
- * - in Tasks, this is robot.mb().nrParams(), TASKS BACKEND IS NOT SUPPORTED
- * - in TVM, this is robot.tvmRobot().qJoints().size()
+ * The TorqueTask computes the joint accelerations that minimize the
+ * error between the desired torque vector and the torque produced by the
+ * dynamic model. This task is therefore intended to be used in torque-control
+ * mode only.
+ *
+ * The torque target is expressed directly in joint space and represents the
+ * torques that should be realized at the actuated joints.
+ *
+ * As an additional feature, the task can optionally compensate for external
+ * torques acting on the system if such estimates are available.
+ *
+ * By default, the desired torque target is zero and no external torque
+ * compensation is applied.
  *
  */
 struct MC_TASKS_DLLAPI TorqueTask : public MetaTask
@@ -26,7 +36,8 @@ public:
   TorqueTask(const mc_solver::QPSolver & solver,
              unsigned int rIndex,
              double weight = 10,
-             bool compensateExternalForces = false);
+             bool compensateExternalForces = false,
+             bool compensateGravity = false);
 
   void reset() override;
 
@@ -94,10 +105,16 @@ public:
   bool inSolver() const;
 
   /** Set if the task is compensating external forces */
-  void compensateExternalForces(bool compensate);
+  void setCompensateExternalForces(bool compensate);
 
   /** True if the task is compensating external forces */
-  bool isCompensatingExternalForces() const;
+  bool isCompensatingExternalForces();
+
+  /** Set if the task is compensating gravity */
+  void setCompensateGravity(bool compensate);
+
+  /** True if the task is compensating gravity */
+  bool isCompensatingGravity();
 
 protected:
   void addToSolver(mc_solver::QPSolver & solver) override;
@@ -129,6 +146,8 @@ private:
   double dt_;
   /** True if the task is compensating external forces */
   bool compensateExternalForces_ = false;
+  /** True if the task is compensating gravity */
+  bool compensateGravity_ = false;
 
   /** Store the target torque */
   std::vector<std::vector<double>> torque_;
