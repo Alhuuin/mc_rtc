@@ -1,8 +1,9 @@
 #include <mc_tasks/TorquePDJointTask.h>
 
+#include <mc_rtc/gui/ArrayInput.h>
+#include <mc_rtc/gui/ArrayLabel.h>
 #include <mc_rtc/gui/NumberInput.h>
 #include <mc_rtc/gui/NumberSlider.h>
-#include "mc_rtc/gui/ArrayInput.h"
 
 namespace mc_tasks
 {
@@ -19,7 +20,7 @@ TorquePDJointTask::TorquePDJointTask(const mc_solver::QPSolver & solver,
   stiffness_(Eigen::VectorXd::Zero(nbActuatedJoints)), damping_(Eigen::VectorXd::Zero(nbActuatedJoints)),
   posTarget_(Eigen::VectorXd::Zero(nbActuatedJoints)), velTarget_(Eigen::VectorXd::Zero(nbActuatedJoints)),
   torqueFeedforward_(Eigen::VectorXd::Zero(nbActuatedJoints)), posError_(Eigen::VectorXd::Zero(nbActuatedJoints)),
-  velError_(Eigen::VectorXd::Zero(nbActuatedJoints)), torque_target_(Eigen::VectorXd::Zero(nbActuatedJoints))
+  velError_(Eigen::VectorXd::Zero(nbActuatedJoints)), torqueTarget_(Eigen::VectorXd::Zero(nbActuatedJoints))
 {
   if(backend_ == Backend::Tasks)
     mc_rtc::log::error_and_throw<std::runtime_error>(
@@ -36,21 +37,22 @@ TorquePDJointTask::TorquePDJointTask(const mc_solver::QPSolver & solver,
 
 void TorquePDJointTask::update(mc_solver::QPSolver & solver)
 {
+  torqueTarget_.setZero();
   auto & realRobot = solver.realRobots().robot(rIndex_);
-  Eigen::VectorXd qdot(realRobot.mb().nrDof()), q(realRobot.mb().nrParams());
-  qdot = rbd::sDofToVector(realRobot.mb(), realRobot.alpha());
-  q = rbd::sParamToVector(realRobot.mb(), realRobot.q());
+  Eigen::VectorXd qdot_full(realRobot.mb().nrDof()), q_full(realRobot.mb().nrParams());
+  qdot_full = rbd::sDofToVector(realRobot.mb(), realRobot.alpha());
+  q_full = rbd::sParamToVector(realRobot.mb(), realRobot.q());
 
-  posError_ = posTarget_ - q.tail(nbActuatedJoints);
-  velError_ = velTarget_ - qdot.tail(nbActuatedJoints);
-  torque_target_ += stiffness_.asDiagonal() * posError_;
-  torque_target_ += damping_.asDiagonal() * velError_;
-  torque_target_ += torqueFeedforward_;
+  posError_ = posTarget_ - q_full.tail(nbActuatedJoints);
+  velError_ = velTarget_ - qdot_full.tail(nbActuatedJoints);
+  torqueTarget_ += stiffness_.asDiagonal() * posError_;
+  torqueTarget_ += damping_.asDiagonal() * velError_;
+  torqueTarget_ += torqueFeedforward_;
 
   std::vector<std::vector<double>> torque_vector = robots_.robot(rIndex_).mbc().jointTorque;
 
   Eigen::VectorXd torque_target_full = Eigen::VectorXd::Zero(realRobot.mb().nrDof());
-  torque_target_full.tail(nbActuatedJoints) = torque_target_;
+  torque_target_full.tail(nbActuatedJoints) = torqueTarget_;
 
   torque_vector = rbd::sVectorToDof(realRobot.mb(), torque_target_full);
 
@@ -148,18 +150,21 @@ void TorquePDJointTask::addToGUI(mc_rtc::gui::StateBuilder & gui)
   gui.addElement({"Tasks", name_, "Gains"}, mc_rtc::gui::ArrayInput("Stiffness", stiffness_),
                  mc_rtc::gui::ArrayInput("Damping", damping_),
                  mc_rtc::gui::NumberInput(
-                     "Stiffness & Damping", [this]() { return stiffness_[0]; },
+                     "Constant Stiffness & Critical Damping", [this]() { return stiffness_[0]; },
                      [this](const double & g)
                      {
                        setStiffness(Eigen::VectorXd::Constant(nbActuatedJoints, g));
                        setDamping(Eigen::VectorXd::Constant(nbActuatedJoints, 2.0 * sqrt(g)));
                      }),
                  mc_rtc::gui::NumberInput(
-                     "Stiffness", [this]() { return stiffness_[0]; },
+                     "Constant Stiffness", [this]() { return stiffness_[0]; },
                      [this](const double & s) { setStiffness(Eigen::VectorXd::Constant(nbActuatedJoints, s)); }),
                  mc_rtc::gui::NumberInput(
-                     "Damping", [this]() { return damping_[0]; },
+                     "Constant Damping", [this]() { return damping_[0]; },
                      [this](const double & d) { setDamping(Eigen::VectorXd::Constant(nbActuatedJoints, d)); }));
+
+  gui.addElement({"Tasks", name_, "Details"}, mc_rtc::gui::ArrayLabel("Position Error", posError_),
+                 mc_rtc::gui::ArrayLabel("Velocity Error", velError_));
 
   std::vector<std::string> active_gripper_joints;
   const auto & robot = robots_.robot(rIndex_);
@@ -228,14 +233,15 @@ void TorquePDJointTask::addToGUI(mc_rtc::gui::StateBuilder & gui)
 void TorquePDJointTask::addToLogger(mc_rtc::Logger & logger)
 {
   TorqueTask::addToLogger(logger);
+  logger.removeLogEntry(name_ + "_torque");
   logger.addLogEntry(name_ + "_stiffness", [this]() { return stiffness_; });
   logger.addLogEntry(name_ + "_damping", [this]() { return damping_; });
   logger.addLogEntry(name_ + "_posTarget", [this]() { return posTarget_; });
   logger.addLogEntry(name_ + "_velTarget", [this]() { return velTarget_; });
   logger.addLogEntry(name_ + "_torqueFeedforward", [this]() { return torqueFeedforward_; });
-  logger.addLogEntry(name_ + "_nbActuatedJoints", [this]() { return nbActuatedJoints; });
   logger.addLogEntry(name_ + "_posError", [this]() { return posError_; });
   logger.addLogEntry(name_ + "_velError", [this]() { return velError_; });
+  logger.addLogEntry(name_ + "_torque", [this]() { return torqueTarget_; });
 }
 
 } // namespace mc_tasks

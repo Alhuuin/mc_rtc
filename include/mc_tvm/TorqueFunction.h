@@ -60,13 +60,11 @@ public:
 
 protected:
   void updateb();
+  bool isValidTorque(const std::vector<std::vector<double>> & ref, const std::vector<std::vector<double>> & in);
 
   const mc_rbdyn::Robot & robot_;
   bool compensateExternalForces_;
   bool compensateGravity_;
-
-  void eigenToMCrtcTorque();
-  void mcrtcTorqueToEigen();
 
   /** Target */
   Eigen::VectorXd torque_;

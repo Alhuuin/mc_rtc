@@ -78,7 +78,7 @@ protected:
   Eigen::VectorXd posError_;
   Eigen::VectorXd velError_;
 
-  Eigen::VectorXd torque_target_;
+  Eigen::VectorXd torqueTarget_;
 };
 
 } // namespace mc_tasks
