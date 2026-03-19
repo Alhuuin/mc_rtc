@@ -25,14 +25,19 @@ TorquePDJointTask::TorquePDJointTask(const mc_solver::QPSolver & solver,
   if(backend_ == Backend::Tasks)
     mc_rtc::log::error_and_throw<std::runtime_error>(
         "[mc_tasks] Can't use TorquePDJointTask with {} backend, please use TVM backend", backend_);
-  name_ = std::string("pd_joint_") + solver.robots().robot(rIndex).name();
+  name_ = std::string("pd_joint_") + solver.robots().robot(rIndex_).name();
   type_ = "pd_joint";
-
-  Eigen::VectorXd q(robots_.robot(rIndex_).mb().nrParams());
-  posTarget_ = rbd::sParamToVector(robots_.robot(rIndex_).mb(), robots_.robot(rIndex_).q()).tail(nbActuatedJoints);
 
   setStiffness(stiffness);
   setDamping(2.0 * sqrt(stiffness)); // Critical damping by default
+  reset();
+}
+
+void TorquePDJointTask::reset()
+{
+  posTarget_ = rbd::sParamToVector(robots_.robot(rIndex_).mb(), robots_.robot(rIndex_).q()).tail(nbActuatedJoints);
+  velTarget_.setZero();
+  torqueFeedforward_.setZero();
 }
 
 void TorquePDJointTask::update(mc_solver::QPSolver & solver)
@@ -147,21 +152,20 @@ const Eigen::VectorXd & TorquePDJointTask::torqueFeedforward() const
 
 void TorquePDJointTask::addToGUI(mc_rtc::gui::StateBuilder & gui)
 {
-  gui.addElement({"Tasks", name_, "Gains"}, mc_rtc::gui::ArrayInput("Stiffness", stiffness_),
-                 mc_rtc::gui::ArrayInput("Damping", damping_),
-                 mc_rtc::gui::NumberInput(
-                     "Constant Stiffness & Critical Damping", [this]() { return stiffness_[0]; },
-                     [this](const double & g)
-                     {
-                       setStiffness(Eigen::VectorXd::Constant(nbActuatedJoints, g));
-                       setDamping(Eigen::VectorXd::Constant(nbActuatedJoints, 2.0 * sqrt(g)));
-                     }),
-                 mc_rtc::gui::NumberInput(
-                     "Constant Stiffness", [this]() { return stiffness_[0]; },
-                     [this](const double & s) { setStiffness(Eigen::VectorXd::Constant(nbActuatedJoints, s)); }),
-                 mc_rtc::gui::NumberInput(
-                     "Constant Damping", [this]() { return damping_[0]; },
-                     [this](const double & d) { setDamping(Eigen::VectorXd::Constant(nbActuatedJoints, d)); }));
+  gui.addElement(
+      {"Tasks", name_, "Gains"}, mc_rtc::gui::ArrayInput("Stiffness", stiffness_),
+      mc_rtc::gui::ArrayInput("Damping", damping_),
+      mc_rtc::gui::NumberInput(
+          "Constant Stiffness & Critical Damping", [this]() { return stiffness_[0]; },
+          [this](const double & g)
+          {
+            setStiffness(g);
+            setDamping(2.0 * sqrt(g));
+          }),
+      mc_rtc::gui::NumberInput(
+          "Constant Stiffness", [this]() { return stiffness_[0]; }, [this](const double & s) { setStiffness(s); }),
+      mc_rtc::gui::NumberInput(
+          "Constant Damping", [this]() { return damping_[0]; }, [this](const double & d) { setDamping(d); }));
 
   gui.addElement({"Tasks", name_, "Details"}, mc_rtc::gui::ArrayLabel("Position Error", posError_),
                  mc_rtc::gui::ArrayLabel("Velocity Error", velError_));

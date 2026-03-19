@@ -538,16 +538,18 @@ set(mc_tasks_SRC
     mc_tasks/LookAtTask.cpp
     mc_tasks/LookAtFrameTask.cpp
     mc_tasks/MetaTaskLoader.cpp
-    mc_tasks/TorqueTask.cpp
-    mc_tasks/ForceTask.cpp
-    mc_tasks/WrenchTask.cpp
-    mc_tasks/TorquePDJointTask.cpp
     mc_tasks/lipm_stabilizer/StabilizerTask.cpp
     mc_tasks/lipm_stabilizer/StabilizerTask_log_gui.cpp
     mc_tasks/lipm_stabilizer/ZMPCC.cpp
     mc_tasks/lipm_stabilizer/Contact.cpp
     mc_tasks/CompliantEndEffectorTask.cpp
     mc_tasks/CompliantPostureTask.cpp
+    mc_tasks/TorqueTask.cpp
+    mc_tasks/ForceTask.cpp
+    mc_tasks/WrenchTask.cpp
+    mc_tasks/TorquePDJointTask.cpp
+    mc_tasks/TorquePDCartesianTask.cpp
+    mc_tasks/TorquePDRelativeCartesianTask.cpp
 )
 
 set(mc_tasks_HDR
@@ -590,6 +592,8 @@ set(mc_tasks_HDR
     ../include/mc_tasks/CompliantEndEffectorTask.h
     ../include/mc_tasks/CompliantPostureTask.h
     ../include/mc_tasks/TorquePDJointTask.h
+    ../include/mc_tasks/TorquePDCartesianTask.h
+    ../include/mc_tasks/TorquePDRelativeCartesianTask.h
 )
 
 add_library(mc_tasks SHARED ${mc_tasks_SRC} ${mc_tasks_HDR})

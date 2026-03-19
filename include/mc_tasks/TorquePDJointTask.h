@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2022 CNRS-UM LIRMM, CNRS-AIST JRL
+ * Copyright 2015-2026 CNRS-UM LIRMM, CNRS-AIST JRL
  */
 
 #pragma once
@@ -43,6 +43,7 @@ struct MC_TASKS_DLLAPI TorquePDJointTask : public TorqueTask
 {
 public:
   TorquePDJointTask(const mc_solver::QPSolver & solver, unsigned int rIndex, double stiffness, double weight);
+  void reset() override;
   void setStiffness(double stiffness);
   void setDamping(double damping);
   void setStiffness(const Eigen::VectorXd & stiffness);
@@ -58,9 +59,11 @@ public:
   const Eigen::VectorXd & torqueFeedforward() const;
 
 protected:
-  void update(mc_solver::QPSolver & solver);
-  void addToGUI(mc_rtc::gui::StateBuilder & gui);
-  void addToLogger(mc_rtc::Logger & logger);
+  void addToGUI(mc_rtc::gui::StateBuilder & gui) override;
+  void addToLogger(mc_rtc::Logger & logger) override;
+
+private:
+  void update(mc_solver::QPSolver & solver) override;
 
   /** Robot handled by the task */
   const mc_rbdyn::Robots & robots_;
