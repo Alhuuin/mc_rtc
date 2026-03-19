@@ -2,6 +2,7 @@
 
 #include <mc_rtc/gui/ArrayInput.h>
 #include <mc_rtc/gui/ArrayLabel.h>
+#include <mc_rtc/gui/Checkbox.h>
 #include <mc_rtc/gui/NumberInput.h>
 #include <mc_rtc/gui/NumberSlider.h>
 #include <mc_rtc/gui/Transform.h>
@@ -14,21 +15,21 @@ TorquePDCartesianTask::TorquePDCartesianTask(const mc_solver::QPSolver & solver,
                                              const mc_rbdyn::RobotFrame & frame,
                                              double stiffness,
                                              double weight)
-: TorqueTask(solver, frame.robot().robotIndex(), weight), robots_(solver.robots()), rIndex_(frame.robot().robotIndex()),
+: TorqueTask(solver, frame.robot().robotIndex(), weight), posTarget_(sva::PTransformd::Identity()),
+  velTarget_(sva::MotionVecd::Zero()), robots_(solver.robots()), rIndex_(frame.robot().robotIndex()),
   nbActuatedJoints(
       (robots_.robot(rIndex_).mb().nrJoints() > 0 && robots_.robot(rIndex_).mb().joint(0).type() == rbd::Joint::Free)
           ? robots_.robot(rIndex_).mb().nrDof() - 6
           : robots_.robot(rIndex_).mb().nrDof()),
-  stiffness_(Eigen::Vector6d::Zero()), damping_(Eigen::Vector6d::Zero()), posTarget_(sva::PTransformd::Identity()),
-  velTarget_(sva::MotionVecd::Zero()), torqueFeedforward_(Eigen::VectorXd::Zero(nbActuatedJoints)),
-  posError_(sva::MotionVecd::Zero()), velError_(sva::MotionVecd::Zero()),
+  torqueFeedforward_(Eigen::VectorXd::Zero(nbActuatedJoints)), stiffness_(Eigen::Vector6d::Zero()),
+  damping_(Eigen::Vector6d::Zero()), posError_(sva::MotionVecd::Zero()), velError_(sva::MotionVecd::Zero()),
   torqueTarget_(Eigen::VectorXd::Zero(nbActuatedJoints)), frame_(frame)
 {
   if(backend_ == Backend::Tasks)
     mc_rtc::log::error_and_throw<std::runtime_error>(
         "[mc_tasks] Can't use TorquePDCartesianTask with {} backend, please use TVM backend", backend_);
 
-  name_ = std::string("pd_cartesian_") + solver.robots().robot(rIndex_).name();
+  name_ = "pd_cartesian_" + frame.name() + "_" + solver.robots().robot(frame.robot().robotIndex()).name();
   type_ = "pd_cartesian";
 
   setStiffness(stiffness);
@@ -123,31 +124,6 @@ void TorquePDCartesianTask::setTorqueFeedforward(const Eigen::VectorXd & tau_ff)
   torqueFeedforward_ = tau_ff;
 }
 
-const Eigen::Vector6d & TorquePDCartesianTask::stiffness() const
-{
-  return stiffness_;
-}
-
-const Eigen::Vector6d & TorquePDCartesianTask::damping() const
-{
-  return damping_;
-}
-
-const sva::PTransformd & TorquePDCartesianTask::posTarget() const
-{
-  return posTarget_;
-}
-
-const sva::MotionVecd & TorquePDCartesianTask::velTarget() const
-{
-  return velTarget_;
-}
-
-const Eigen::VectorXd & TorquePDCartesianTask::torqueFeedforward() const
-{
-  return torqueFeedforward_;
-}
-
 void TorquePDCartesianTask::addToGUI(mc_rtc::gui::StateBuilder & gui)
 {
   gui.addElement(
@@ -172,9 +148,9 @@ void TorquePDCartesianTask::addToGUI(mc_rtc::gui::StateBuilder & gui)
                  mc_rtc::gui::Transform(
                      "pos_target", [this]() { return this->posTarget(); },
                      [this](const sva::PTransformd & X_0_target) { this->setPosTarget(X_0_target); }),
-                 mc_rtc::gui::Transform("pos", [this]() { return this->frame()->position(); }));
+                 mc_rtc::gui::Transform("pos", [this]() { return this->frame_->position(); }));
 
-  gui.addElement({"Tasks", name_, "Velocity Target"}, mc_rtc::gui::ArrayInput("Velocity Target", velTarget_));
+  gui.addElement({"Tasks", name_, "Velocity Target"}, mc_rtc::gui::ArrayInput("vel_target", velTarget_));
 
   std::vector<std::string> active_gripper_joints;
   const auto & robot = robots_.robot(rIndex_);

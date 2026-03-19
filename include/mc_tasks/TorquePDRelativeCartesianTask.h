@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include <mc_tasks/TorqueTask.h>
+#include <mc_tasks/TorquePDCartesianTask.h>
 #include <SpaceVecAlg/MotionVec.h>
 #include <Eigen/src/Core/Matrix.h>
 
@@ -27,8 +27,8 @@ namespace mc_tasks
  *
  * where \f$x\f$ and \f$\dot{x}\f$ are the current cartesian position and velocity,
  * and \f$x_d\f$ and \f$\dot{x}_d\f$ are the desired cartesian position and velocity.
- * Cartesian position and velocity are expressed in the relative frame, and the Jacobian is the geometric Jacobian
- * expressed in the relative frame.
+ * Cartesian position and velocity are expressed in the relative frame, and converted to the world frame to be handle by
+ * the TorquePDCartesianTask.
  *
  * Additional torque components can be added to the command:
  *  - feedforward torques \f$\tau_{ff}\f$,
@@ -42,7 +42,7 @@ namespace mc_tasks
  * (\f$\dot{x}_d = 0\f$).
  *
  */
-struct MC_TASKS_DLLAPI TorquePDRelativeCartesianTask : public TorqueTask
+struct MC_TASKS_DLLAPI TorquePDRelativeCartesianTask : public TorquePDCartesianTask
 {
 public:
   /*! \brief Constructor
@@ -59,7 +59,7 @@ public:
    */
   TorquePDRelativeCartesianTask(const mc_solver::QPSolver & solver,
                                 const mc_rbdyn::RobotFrame & frame,
-                                const mc_rbdyn::RobotFrame & relative,
+                                const mc_rbdyn::Frame & relative,
                                 double stiffness = 100.0,
                                 double weight = 500.0);
 
@@ -109,49 +109,21 @@ public:
                                 double stiffness = 100.0,
                                 double weight = 500.0);
 
-  void reset() override;
+  void setPosTarget(const sva::PTransformd & xd) override; // xd is in the relative frame.
+  void setVelTarget(const sva::MotionVecd & xd_dot) override; // xd_dot is in the relative frame.
 
-  void setStiffness(double stiffness);
-  void setDamping(double damping);
-  void setStiffness(const Eigen::Vector6d & stiffness);
-  void setDamping(const Eigen::Vector6d & damping);
-  void setPosTarget(const sva::PTransformd & xd);
-  void setVelTarget(const sva::MotionVecd & xd_dot);
-  void setTorqueFeedforward(const Eigen::VectorXd & tau_ff);
-
-  const Eigen::Vector6d & stiffness() const;
-  const Eigen::Vector6d & damping() const;
-  const sva::PTransformd & posTarget() const;
-  const sva::MotionVecd & velTarget() const;
-  const Eigen::VectorXd & torqueFeedforward() const;
+  sva::PTransformd posTarget() override; // Return the position target in the relative frame.
+  sva::MotionVecd velTarget() override; // Return the velocity target in the relative frame.
 
 protected:
   void addToGUI(mc_rtc::gui::StateBuilder & gui) override;
-  void addToLogger(mc_rtc::Logger & logger) override;
-  const mc_rbdyn::ConstRobotFramePtr & frame() const { return frame_; }
 
 private:
   void update(mc_solver::QPSolver & solver) override;
-
-  /** Robot handled by the task */
-  const mc_rbdyn::Robots & robots_;
-  unsigned int rIndex_;
-
-  const int nbActuatedJoints; // Number of actuated joints (excluding floating base)
-
-  Eigen::Vector6d stiffness_; // Kp
-  Eigen::Vector6d damping_; // Kd
-
-  sva::PTransformd posTarget_; // xd
-  sva::MotionVecd velTarget_; // xd_dot
-  Eigen::VectorXd torqueFeedforward_; // tau_ff
-
-  sva::MotionVecd posError_;
-  sva::MotionVecd velError_;
-
-  Eigen::VectorXd torqueTarget_;
-  mc_rbdyn::ConstRobotFramePtr frame_;
-  mc_rbdyn::ConstRobotFramePtr relative_;
+  void reset() override;
+  mc_rbdyn::ConstFramePtr relative_;
+  sva::PTransformd posTarget_rel_; // xd
+  sva::MotionVecd velTarget_rel_; // xd_dot
 };
 
 } // namespace mc_tasks

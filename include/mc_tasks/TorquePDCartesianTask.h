@@ -83,36 +83,34 @@ public:
   void setDamping(double damping);
   void setStiffness(const Eigen::Vector6d & stiffness);
   void setDamping(const Eigen::Vector6d & damping);
-  void setPosTarget(const sva::PTransformd & xd);
-  void setVelTarget(const sva::MotionVecd & xd_dot);
+  virtual void setPosTarget(const sva::PTransformd & xd);
+  virtual void setVelTarget(const sva::MotionVecd & xd_dot);
   void setTorqueFeedforward(const Eigen::VectorXd & tau_ff);
 
-  const Eigen::Vector6d & stiffness() const;
-  const Eigen::Vector6d & damping() const;
-  const sva::PTransformd & posTarget() const;
-  const sva::MotionVecd & velTarget() const;
-  const Eigen::VectorXd & torqueFeedforward() const;
+  const Eigen::Vector6d & stiffness() const { return stiffness_; }
+  const Eigen::Vector6d & damping() const { return damping_; }
+  virtual sva::PTransformd posTarget() { return posTarget_; }
+  virtual sva::MotionVecd velTarget() { return velTarget_; }
+  const Eigen::VectorXd & torqueFeedforward() const { return torqueFeedforward_; }
 
 protected:
   void addToGUI(mc_rtc::gui::StateBuilder & gui) override;
   void addToLogger(mc_rtc::Logger & logger) override;
-  const mc_rbdyn::ConstRobotFramePtr & frame() const { return frame_; }
+  inline const mc_rbdyn::RobotFrame & frame() const noexcept { return *frame_; }
+  virtual void update(mc_solver::QPSolver & solver) override;
+  sva::PTransformd posTarget_; // xd
+  sva::MotionVecd velTarget_; // xd_dot
 
 private:
-  void update(mc_solver::QPSolver & solver) override;
-
   /** Robot handled by the task */
   const mc_rbdyn::Robots & robots_;
   unsigned int rIndex_;
 
   const int nbActuatedJoints; // Number of actuated joints (excluding floating base)
+  Eigen::VectorXd torqueFeedforward_; // tau_ff
 
   Eigen::Vector6d stiffness_; // Kp
   Eigen::Vector6d damping_; // Kd
-
-  sva::PTransformd posTarget_; // xd
-  sva::MotionVecd velTarget_; // xd_dot
-  Eigen::VectorXd torqueFeedforward_; // tau_ff
 
   sva::MotionVecd posError_;
   sva::MotionVecd velError_;
