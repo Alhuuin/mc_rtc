@@ -2,7 +2,6 @@
  * Copyright 2015-2022 CNRS-UM LIRMM, CNRS-AIST JRL
  */
 
-#include <mc_rtc/gui/Checkbox.h>
 #include <mc_tasks/TorqueTask.h>
 
 #include <mc_tasks/MetaTaskLoader.h>
@@ -16,6 +15,8 @@
 
 #include <mc_rbdyn/configuration_io.h>
 
+#include <mc_rtc/gui/ArrayLabel.h>
+#include <mc_rtc/gui/Checkbox.h>
 #include <mc_rtc/gui/NumberInput.h>
 #include <mc_rtc/gui/NumberSlider.h>
 
@@ -54,6 +55,9 @@ struct TVMTorqueTask : public TrajectoryTaskGeneric
   void update(mc_solver::QPSolver & solver) override { TrajectoryTaskGeneric::update(solver); }
 
   void torque(const std::vector<std::vector<double>> & p) { tvm_error(errorT)->torque(p); }
+
+  Eigen::VectorXd torqueExternalForces() const { return tvm_error(errorT)->torqueExternalForces(); }
+  Eigen::VectorXd torqueGravity() const { return tvm_error(errorT)->torqueGravity(); }
 };
 
 } // namespace details
@@ -381,6 +385,28 @@ bool TorqueTask::isCompensatingGravity()
   }
 }
 
+Eigen::VectorXd TorqueTask::torqueExternalForces() const
+{
+  switch(backend_)
+  {
+    case Backend::TVM:
+      return tvm_error(pt_)->torqueExternalForces();
+    default:
+      mc_rtc::log::error_and_throw("Compensating external forces is only supported in TVM backend");
+  }
+}
+
+Eigen::VectorXd TorqueTask::torqueGravity() const
+{
+  switch(backend_)
+  {
+    case Backend::TVM:
+      return tvm_error(pt_)->torqueGravity();
+    default:
+      mc_rtc::log::error_and_throw("Compensating gravity is only supported in TVM backend");
+  }
+}
+
 void TorqueTask::jointWeights(const std::map<std::string, double> & jws)
 {
   Eigen::VectorXd dimW = dimWeight();
@@ -392,7 +418,6 @@ void TorqueTask::jointWeights(const std::map<std::string, double> & jws)
     {
       auto jIndex = mb.jointIndexByName(jw.first);
       if(mb.joint(jIndex).dof() > 0) { dimW[mb.jointPosInDof(jIndex)] = jw.second; }
-      // No warning, it's probably over specified
     }
     else
     {
@@ -452,31 +477,46 @@ void TorqueTask::addToLogger(mc_rtc::Logger & logger)
 
 void TorqueTask::addToGUI(mc_rtc::gui::StateBuilder & gui)
 {
-  MetaTask::addToGUI(gui);
-  gui.addElement({"Tasks", name_, "Additional Forces"},
-                 mc_rtc::gui::Checkbox(
-                     "Compensate External Forces", [this]() { return isCompensatingExternalForces(); },
-                     [this]() { setCompensateExternalForces(!isCompensatingExternalForces()); }));
-  gui.addElement({"Tasks", name_, "Additional Forces"},
-                 mc_rtc::gui::Checkbox(
-                     "Compensate Gravity", [this]() { return isCompensatingGravity(); },
-                     [this]() { setCompensateGravity(!isCompensatingGravity()); }));
-  gui.addElement({"Tasks", name_, "Gains"},
-                 mc_rtc::gui::NumberInput(
-                     "weight", [this]() { return this->weight(); }, [this](const double & w) { this->weight(w); }));
   std::vector<std::string> active_gripper_joints;
-  for(const auto & g : robots_.robot(rIndex_).grippers())
+  std::vector<std::string> jointNames;
+  const auto & robot = robots_.robot(rIndex_);
+
+  for(const auto & g : robot.grippers())
   {
     for(const auto & n : g.get().activeJoints()) { active_gripper_joints.push_back(n); }
   }
   auto isActiveGripperJoint = [&](const std::string & j)
   { return std::find(active_gripper_joints.begin(), active_gripper_joints.end(), j) != active_gripper_joints.end(); };
-  for(const auto & j : robots_.robot(rIndex_).mb().joints())
+
+  jointNames.reserve(size_t(torque_vector_.size()));
+  for(const auto & joint : robot.mb().joints())
+  {
+    if(joint.dof() == 1 && !joint.isMimic() && !isActiveGripperJoint(joint.name()))
+    {
+      jointNames.push_back(joint.name());
+    }
+  }
+
+  MetaTask::addToGUI(gui);
+  gui.addElement(
+      {"Tasks", name_, "Additional Forces"},
+      mc_rtc::gui::Checkbox(
+          "Compensate External Forces", [this]() { return isCompensatingExternalForces(); },
+          [this]() { setCompensateExternalForces(!isCompensatingExternalForces()); }),
+      mc_rtc::gui::Checkbox(
+          "Compensate Gravity (+ Coriolis)", [this]() { return isCompensatingGravity(); },
+          [this]() { setCompensateGravity(!isCompensatingGravity()); }),
+      mc_rtc::gui::ArrayLabel("Torque External Forces", jointNames, [this]() { return this->torqueExternalForces(); }),
+      mc_rtc::gui::ArrayLabel("Torque Gravity", jointNames, [this]() { return this->torqueGravity(); }));
+  gui.addElement({"Tasks", name_, "Gains"},
+                 mc_rtc::gui::NumberInput(
+                     "weight", [this]() { return this->weight(); }, [this](const double & w) { this->weight(w); }));
+
+  for(const auto & j : robot.mb().joints())
   {
     if(j.dof() != 1 || j.isMimic() || isActiveGripperJoint(j.name())) { continue; }
-    auto jIndex = robots_.robot(rIndex_).jointIndexByName(j.name());
-    bool isContinuous = robots_.robot(rIndex_).ql()[jIndex][0] == -std::numeric_limits<double>::infinity();
-    auto updatePosture = [this](unsigned int jIndex, double v)
+    auto jIndex = robot.jointIndexByName(j.name());
+    auto updateTorque = [this](unsigned int jIndex, double v)
     {
       this->torque_[jIndex][0] = v;
       const auto & jName = robots_.robot(rIndex_).mb().joint(static_cast<int>(jIndex)).name();
@@ -490,20 +530,11 @@ void TorqueTask::addToGUI(mc_rtc::gui::StateBuilder & gui)
       }
       torque(torque_);
     };
-    if(isContinuous)
-    {
-      gui.addElement({"Tasks", name_, "Target"}, mc_rtc::gui::NumberInput(
-                                                     j.name(), [this, jIndex]() { return this->torque_[jIndex][0]; },
-                                                     [jIndex, updatePosture](double v) { updatePosture(jIndex, v); }));
-    }
-    else
-    {
-      gui.addElement({"Tasks", name_, "Target"},
-                     mc_rtc::gui::NumberSlider(
-                         j.name(), [this, jIndex]() { return this->torque_[jIndex][0]; },
-                         [jIndex, updatePosture](double v) { updatePosture(jIndex, v); },
-                         robots_.robot(rIndex_).ql()[jIndex][0], robots_.robot(rIndex_).qu()[jIndex][0]));
-    }
+
+    gui.addElement({"Tasks", name_, "Torque Target"},
+                   mc_rtc::gui::NumberSlider(
+                       j.name(), [this, jIndex]() { return this->torque_[jIndex][0]; }, [jIndex, updateTorque](double v)
+                       { updateTorque(jIndex, v); }, -robot.tl()[jIndex][0], robot.tu()[jIndex][0]));
   }
 }
 

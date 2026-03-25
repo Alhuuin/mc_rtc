@@ -116,6 +116,9 @@ public:
   /** True if the task is compensating gravity */
   bool isCompensatingGravity();
 
+  Eigen::VectorXd torqueExternalForces() const;
+  Eigen::VectorXd torqueGravity() const;
+
 protected:
   void addToSolver(mc_solver::QPSolver & solver) override;
 

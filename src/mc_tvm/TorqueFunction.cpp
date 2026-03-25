@@ -32,22 +32,19 @@ TorqueFunction::TorqueFunction(const mc_rbdyn::Robot & robot, bool compensateExt
 void TorqueFunction::updateb() // Ax + b = 0
 {
   b_ = -torque_;
-  if(compensateExternalForces_)
-  {
-    Eigen::VectorXd extForces = robot_.tvmRobot().tauExternal();
-    b_ += extForces;
-  }
-  if(compensateGravity_)
-  {
-    Eigen::VectorXd gravityComp = robot_.tvmRobot().C();
-    b_ -= gravityComp;
-  }
+
+  torque_extForces_ = robot_.tvmRobot().tauExternal();
+  torque_gravity_ = robot_.tvmRobot().C();
+  if(compensateExternalForces_) { b_ += torque_extForces_; }
+  if(compensateGravity_) { b_ -= torque_gravity_; }
 }
 
 void TorqueFunction::reset()
 {
   torque_ = robot_.tvmRobot().tau()->value();
   torque_mc_rtc_ = rbd::sVectorToDof(robot_.mb(), torque_);
+  torque_extForces_ = robot_.tvmRobot().tauExternal();
+  torque_gravity_ = robot_.tvmRobot().C();
 }
 
 void TorqueFunction::torque(const std::string & j, const std::vector<double> & tau)

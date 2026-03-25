@@ -58,6 +58,9 @@ public:
   void setCompensateGravity(bool compensate) { compensateGravity_ = compensate; }
   bool isCompensatingGravity() { return compensateGravity_; }
 
+  Eigen::VectorXd torqueExternalForces() const { return torque_extForces_; }
+  Eigen::VectorXd torqueGravity() const { return torque_gravity_; }
+
 protected:
   void updateb();
   bool isValidTorque(const std::vector<std::vector<double>> & ref, const std::vector<std::vector<double>> & in);
@@ -72,6 +75,9 @@ protected:
 
   /** Starting joint */
   int j0_;
+
+  Eigen::VectorXd torque_extForces_;
+  Eigen::VectorXd torque_gravity_;
 };
 
 } // namespace mc_tvm
