@@ -8,8 +8,6 @@
 
 #include <mc_rtc/void_ptr.h>
 
-#include <Tasks/QPTasks.h>
-
 namespace mc_tasks
 {
 
@@ -79,21 +77,20 @@ public:
 
   Eigen::VectorXd speed() const override;
 
-  /** Change torque objective */
-  void torque(const std::vector<std::vector<double>> & tau);
+  Eigen::VectorXd torqueTargetVector() const { return torque_vector_; }
 
   /** Get current torque objective */
-  std::vector<std::vector<double>> torque() const;
+  std::vector<std::vector<double>> torqueTarget() const;
 
   /** Set joint weights for the torque task */
   void jointWeights(const std::map<std::string, double> & jws);
 
   /** Set specific joint targets
    *
-   * \param joints Map of joint's name to joint's configuration
+   * \param tau Map of joint's name to torque's configuration
    *
    */
-  void target(const std::map<std::string, std::vector<double>> & joints);
+  void target(const std::map<std::string, std::vector<double>> & tau);
 
   /** Set task's weight */
   void weight(double w);
@@ -130,6 +127,9 @@ protected:
 
   void addToLogger(mc_rtc::Logger & logger) override;
 
+  /** Change torque objective without precising joint names */
+  void torqueTarget(const std::vector<std::vector<double>> & tau);
+
 private:
   /** True if added to solver */
   bool inSolver_ = false;
@@ -154,7 +154,7 @@ private:
 
   /** Store the target torque */
   std::vector<std::vector<double>> torque_;
-  /** Store the torque vector */
+  /** Store the target torque vector */
   Eigen::VectorXd torque_vector_;
   /** Store mimic information */
   std::unordered_map<std::string, std::vector<int>> mimics_;

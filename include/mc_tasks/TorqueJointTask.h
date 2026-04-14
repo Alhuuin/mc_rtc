@@ -11,8 +11,8 @@ namespace mc_tasks
 {
 /*! \brief Joint-space position task in torque control.
  *
- * The TorqueJointTask computes desired joint torques using a proportional–
- * derivative (PD) control law in joint space. It delegates the resolution of
+ * The TorqueJointTask computes desired joint torques using a
+ * proportional–derivative (PD) control law in joint space. It delegates the resolution of
  * joint accelerations to the TorqueTask, which computes accelerations that best
  * match the desired torques while respecting controller constraints.
  *
@@ -58,20 +58,21 @@ public:
   void setMaxIntegralTorque(double maxIntegralTorque);
   void setIntegralGain(const Eigen::VectorXd & integralGain);
   void setMaxIntegralTorque(const Eigen::VectorXd & maxIntegralTorque);
+
   void setPosTarget(const Eigen::VectorXd & qd);
   void setVelTarget(const Eigen::VectorXd & qd_dot);
   void setTorqueFeedforward(const Eigen::VectorXd & tau_ff);
-  void setDeriveVelocityTargetFromPosition(bool derive) { deriveVelocityTargetFromPosition_ = derive; }
+  void setDeriveVelocityTargetFromPosition(bool compute);
 
-  const Eigen::VectorXd & stiffness() const;
-  const Eigen::VectorXd & damping() const;
-  const Eigen::VectorXd & posTarget() const;
-  const Eigen::VectorXd & velTarget() const;
-  const Eigen::VectorXd & torqueFeedforward() const;
-  const Eigen::VectorXd & integralGain() const;
-  const Eigen::VectorXd & maxIntegralTorque() const;
+  const Eigen::VectorXd & stiffness() const { return stiffness_; }
+  const Eigen::VectorXd & damping() const { return damping_; }
+  const Eigen::VectorXd & posTarget() const { return posTarget_; }
+  const Eigen::VectorXd & velTarget() const { return velTarget_; }
+  const Eigen::VectorXd & torqueFeedforward() const { return torqueFeedforward_; }
+  const Eigen::VectorXd & integralGain() const { return integralGain_; }
+  const Eigen::VectorXd & maxIntegralTorque() const { return maxIntegralTorque_; }
   bool integralTermEnabled() const { return integralTermEnabled_; }
-  bool computeVelocityTargetFromPosition() const { return deriveVelocityTargetFromPosition_; }
+  bool deriveVelocityTargetFromPosition() const { return deriveVelocityTargetFromPosition_; }
 
 protected:
   void addToGUI(mc_rtc::gui::StateBuilder & gui) override;
@@ -101,10 +102,8 @@ private:
   Eigen::VectorXd velError_;
   Eigen::VectorXd integralError_;
 
-  Eigen::VectorXd torqueTarget_;
-
   bool deriveVelocityTargetFromPosition_;
-  Eigen::VectorXd prevPosError_;
+  Eigen::VectorXd prevPosTarget_;
 };
 
 } // namespace mc_tasks

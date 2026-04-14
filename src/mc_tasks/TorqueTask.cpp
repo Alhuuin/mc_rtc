@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2022 CNRS-UM LIRMM, CNRS-AIST JRL
+ * Copyright 2015-2026 CNRS-UM LIRMM, CNRS-AIST JRL
  */
 
 #include <mc_tasks/TorqueTask.h>
@@ -108,14 +108,16 @@ TorqueTask::TorqueTask(const mc_solver::QPSolver & solver,
 
 void TorqueTask::reset()
 {
-  torque(robots_.robot(rIndex_).mbc().jointTorque);
+  torqueTarget(robots_.robot(rIndex_).mbc().jointTorque);
 }
 
 void TorqueTask::load(mc_solver::QPSolver & solver, const mc_rtc::Configuration & config)
 {
   MetaTask::load(solver, config);
-  if(config.has("torque")) { this->torque(config("torque")); }
-  if(config.has("target")) { this->target(config("target")); }
+  if(config.has("target"))
+  {
+    this->target(static_cast<const std::map<std::string, std::vector<double>> &>(config("target")));
+  }
   if(config.has("weight")) { this->weight(config("weight")); }
   if(config.has("jointWeights")) { this->jointWeights(config("jointWeights")); }
 }
@@ -284,9 +286,10 @@ void TorqueTask::update(mc_solver::QPSolver & solver)
   }
 }
 
-void TorqueTask::torque(const std::vector<std::vector<double>> & tau)
+void TorqueTask::torqueTarget(const std::vector<std::vector<double>> & tau)
 {
   torque_ = tau;
+  torque_vector_ = rbd::sDofToVector(robots_.robot(rIndex_).mb(), tau);
 
   switch(backend_)
   {
@@ -301,7 +304,7 @@ void TorqueTask::torque(const std::vector<std::vector<double>> & tau)
   }
 }
 
-std::vector<std::vector<double>> TorqueTask::torque() const
+std::vector<std::vector<double>> TorqueTask::torqueTarget() const
 {
   return torque_;
 }
@@ -430,7 +433,7 @@ void TorqueTask::jointWeights(const std::map<std::string, double> & jws)
 
 void TorqueTask::target(const std::map<std::string, std::vector<double>> & joints)
 {
-  auto tau = torque();
+  auto tau = torqueTarget();
 
   for(const auto & j : joints)
   {
@@ -462,21 +465,23 @@ void TorqueTask::target(const std::map<std::string, std::vector<double>> & joint
       }
     }
   }
-  torque_vector_ = rbd::sDofToVector(robots_.robot(rIndex_).mb(), tau);
-  torque(tau);
+  torqueTarget(tau);
 }
 
 void TorqueTask::addToLogger(mc_rtc::Logger & logger)
 {
   logger.addLogEntry(name_ + "_eval", this, [this]() { return eval(); });
-  logger.addLogEntry(name_ + "_speed", this, [this]() -> const Eigen::VectorXd & { return speed_; });
-  logger.addLogEntry(name_ + "_torque", this, [this]() -> const Eigen::VectorXd & { return torque_vector_; });
+  logger.addLogEntry(name_ + "_speed", this, [this]() { return speed(); });
+  logger.addLogEntry(name_ + "_torqueTarget", this, [this]() { return torqueTargetVector(); });
   logger.addLogEntry(name_ + "_compensateExternalForces", this, [this]() { return isCompensatingExternalForces(); });
   logger.addLogEntry(name_ + "_compensateGravity", this, [this]() { return isCompensatingGravity(); });
+  logger.addLogEntry(name_ + "_weight", this, [this]() { return weight(); });
+  logger.addLogEntry(name_ + "_dimWeight", this, [this]() { return dimWeight(); });
 }
 
 void TorqueTask::addToGUI(mc_rtc::gui::StateBuilder & gui)
 {
+  MetaTask::addToGUI(gui);
   std::vector<std::string> active_gripper_joints;
   std::vector<std::string> jointNames;
   const auto & robot = robots_.robot(rIndex_);
@@ -497,7 +502,6 @@ void TorqueTask::addToGUI(mc_rtc::gui::StateBuilder & gui)
     }
   }
 
-  MetaTask::addToGUI(gui);
   gui.addElement(
       {"Tasks", name_, "Additional Forces"},
       mc_rtc::gui::Checkbox(
@@ -528,7 +532,7 @@ void TorqueTask::addToGUI(mc_rtc::gui::StateBuilder & gui)
           this->torque_[static_cast<size_t>(ji)][0] = mimic.mimicMultiplier() * v + mimic.mimicOffset();
         }
       }
-      torque(torque_);
+      torqueTarget(torque_);
     };
 
     gui.addElement({"Tasks", name_, "Torque Target"},

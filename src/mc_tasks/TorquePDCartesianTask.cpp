@@ -1,5 +1,7 @@
 #include <mc_tasks/TorquePDCartesianTask.h>
 
+#include <RBDyn/Jacobian.h>
+
 #include <mc_rtc/gui/ArrayInput.h>
 #include <mc_rtc/gui/ArrayLabel.h>
 #include <mc_rtc/gui/Checkbox.h>
@@ -80,7 +82,7 @@ void TorquePDCartesianTask::update(mc_solver::QPSolver & solver)
 
   torque_vector = rbd::sVectorToDof(realRobot.mb(), torque_target_full);
 
-  TorqueTask::torque(torque_vector);
+  TorqueTask::torqueTarget(torque_vector);
   TorqueTask::update(solver);
 }
 

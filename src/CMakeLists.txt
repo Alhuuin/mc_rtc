@@ -548,6 +548,8 @@ set(mc_tasks_SRC
     mc_tasks/ForceTask.cpp
     mc_tasks/WrenchTask.cpp
     mc_tasks/TorqueJointTask.cpp
+    mc_tasks/TorqueCartesianTask.cpp
+    mc_tasks/TorqueCartesianTask_test.cpp
     mc_tasks/TorquePDCartesianTask.cpp
     mc_tasks/TorquePDRelativeCartesianTask.cpp
 )
@@ -592,6 +594,8 @@ set(mc_tasks_HDR
     ../include/mc_tasks/CompliantEndEffectorTask.h
     ../include/mc_tasks/CompliantPostureTask.h
     ../include/mc_tasks/TorqueJointTask.h
+    ../include/mc_tasks/TorqueCartesianTask.h
+    ../include/mc_tasks/TorqueCartesianTask_test.h
     ../include/mc_tasks/TorquePDCartesianTask.h
     ../include/mc_tasks/TorquePDRelativeCartesianTask.h
 )

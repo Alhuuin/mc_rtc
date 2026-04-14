@@ -52,29 +52,33 @@ public:
   void reset() override;
 
   /*! \brief Get the task's target */
-  virtual sva::ForceVecd target() const;
+  sva::ForceVecd targetWrench() const;
 
   /*! \brief Set the task's target
    *
    * \param wrench Target in world frame
    *
    */
-  virtual void target(const sva::ForceVecd & worldWrench);
+  void targetWrench(const sva::ForceVecd & worldWrench);
 
   /*! \brief Retrieve the controlled frame name */
-  inline const std::string & surface() const noexcept { return frame_->name(); }
+  inline const std::string & frameName() const noexcept { return frame_->name(); }
 
   /*! \brief Return the controlled frame (const) */
   const mc_rbdyn::RobotFrame & frame() const noexcept { return *frame_; }
 
   /** Returns the wrench of the frame in the inertial frame */
-  inline sva::ForceVecd surfaceWrench() const noexcept;
+  sva::ForceVecd currentWrench();
 
-  void addToLogger(mc_rtc::Logger & logger) override;
+  ///** Returns the Transpose of the Jacobian mapping joint torques to the frame wrench */
+  Eigen::MatrixXd dynamicJacobianTranspose() const noexcept;
+
+  Eigen::Matrix6d cartesianInertia() const noexcept;
 
 protected:
   mc_rbdyn::ConstRobotFramePtr frame_;
   void addToGUI(mc_rtc::gui::StateBuilder & gui) override;
+  void addToLogger(mc_rtc::Logger & logger) override;
 };
 
 } // namespace mc_tasks

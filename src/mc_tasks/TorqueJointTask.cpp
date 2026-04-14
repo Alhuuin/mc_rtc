@@ -24,14 +24,13 @@ TorqueJointTask::TorqueJointTask(const mc_solver::QPSolver & solver,
   posTarget_(Eigen::VectorXd::Zero(nbActuatedJoints)), velTarget_(Eigen::VectorXd::Zero(nbActuatedJoints)),
   torqueFeedforward_(Eigen::VectorXd::Zero(nbActuatedJoints)), posError_(Eigen::VectorXd::Zero(nbActuatedJoints)),
   velError_(Eigen::VectorXd::Zero(nbActuatedJoints)), integralError_(Eigen::VectorXd::Zero(nbActuatedJoints)),
-  torqueTarget_(Eigen::VectorXd::Zero(nbActuatedJoints)), deriveVelocityTargetFromPosition_(false),
-  prevPosError_(Eigen::VectorXd::Zero(nbActuatedJoints))
+  deriveVelocityTargetFromPosition_(false), prevPosTarget_(Eigen::VectorXd::Zero(nbActuatedJoints))
 {
   if(backend_ == Backend::Tasks)
     mc_rtc::log::error_and_throw<std::runtime_error>(
         "[mc_tasks] Can't use TorqueJointTask with {} backend, please use TVM backend", backend_);
-  name_ = std::string("pd_joint_") + solver.robots().robot(rIndex_).name();
-  type_ = "pd_joint";
+  name_ = std::string("torque_joint_") + solver.robots().robot(rIndex_).name();
+  type_ = "torque_joint";
 
   setStiffness(stiffness);
   setDamping(2.0 * sqrt(stiffness)); // Critical damping by default
@@ -44,7 +43,7 @@ TorqueJointTask::TorqueJointTask(const mc_solver::QPSolver & solver,
 void TorqueJointTask::reset()
 {
   posTarget_ = rbd::sParamToVector(robots_.robot(rIndex_).mb(), robots_.robot(rIndex_).q()).tail(nbActuatedJoints);
-  prevPosError_.setZero();
+  prevPosTarget_ = posTarget_;
   velTarget_.setZero();
   torqueFeedforward_.setZero();
   integralError_.setZero();
@@ -53,18 +52,18 @@ void TorqueJointTask::reset()
 
 void TorqueJointTask::update(mc_solver::QPSolver & solver)
 {
-  torqueTarget_.setZero();
-  auto & realRobot = solver.realRobots().robot(rIndex_);
-  Eigen::VectorXd qdot_full(realRobot.mb().nrDof()), q_full(realRobot.mb().nrParams());
-  qdot_full = rbd::sDofToVector(realRobot.mb(), realRobot.alpha());
-  q_full = rbd::sParamToVector(realRobot.mb(), realRobot.q());
+  Eigen::VectorXd torqueTarget = Eigen::VectorXd::Zero(nbActuatedJoints);
+  auto & robot = solver.robots().robot(rIndex_);
+  Eigen::VectorXd qdot_full(robot.mb().nrDof()), q_full(robot.mb().nrParams());
+  qdot_full = rbd::sDofToVector(robot.mb(), robot.alpha());
+  q_full = rbd::sParamToVector(robot.mb(), robot.q());
 
   posError_ = posTarget_ - q_full.tail(nbActuatedJoints);
 
   if(deriveVelocityTargetFromPosition_)
   {
-    velTarget_ = (posError_ - prevPosError_) / solver.dt();
-    prevPosError_ = posError_;
+    velTarget_ = (posTarget_ - prevPosTarget_) / solver.dt();
+    prevPosTarget_ = posTarget_;
   }
   velError_ = velTarget_ - qdot_full.tail(nbActuatedJoints);
 
@@ -75,21 +74,21 @@ void TorqueJointTask::update(mc_solver::QPSolver & solver)
     integralTorque_ = // Anti-windup
         tau_i.cwiseMax(-maxIntegralTorque_).cwiseMin(maxIntegralTorque_);
     integralError_ = integralTorque_.cwiseQuotient(integralGain_);
-    torqueTarget_ += integralTorque_;
+    torqueTarget += integralTorque_;
   }
 
-  torqueTarget_ += stiffness_.cwiseProduct(posError_);
-  torqueTarget_ += damping_.cwiseProduct(velError_);
-  torqueTarget_ += torqueFeedforward_;
+  torqueTarget += stiffness_.cwiseProduct(posError_);
+  torqueTarget += damping_.cwiseProduct(velError_);
+  torqueTarget += torqueFeedforward_;
 
-  std::vector<std::vector<double>> torque_vector = robots_.robot(rIndex_).mbc().jointTorque;
+  std::vector<std::vector<double>> torque_target = robot.mbc().jointTorque;
 
-  Eigen::VectorXd torque_target_full = Eigen::VectorXd::Zero(realRobot.mb().nrDof());
-  torque_target_full.tail(nbActuatedJoints) = torqueTarget_;
+  Eigen::VectorXd torque_target_full = Eigen::VectorXd::Zero(robot.mb().nrDof());
+  torque_target_full.tail(nbActuatedJoints) = torqueTarget;
 
-  torque_vector = rbd::sVectorToDof(realRobot.mb(), torque_target_full);
+  torque_target = rbd::sVectorToDof(robot.mb(), torque_target_full);
 
-  TorqueTask::torque(torque_vector);
+  TorqueTask::torqueTarget(torque_target);
   TorqueTask::update(solver);
 }
 
@@ -137,7 +136,6 @@ void TorqueJointTask::enableIntegralTerm(bool enable)
 {
   integralError_.setZero();
   integralTorque_.setZero();
-  prevPosError_.setZero();
   integralTermEnabled_ = enable;
 }
 
@@ -180,6 +178,12 @@ void TorqueJointTask::setVelTarget(const Eigen::VectorXd & qd_dot)
     mc_rtc::log::error_and_throw<std::runtime_error>(
         "[TorqueJointTask] Velocity target vector size should be {}, got {}", nbActuatedJoints, qd_dot.size());
   }
+  if(deriveVelocityTargetFromPosition_)
+  {
+    mc_rtc::log::warning("[TorqueJointTask] Trying to set velocity target while deriveVelocityTargetFromPosition is "
+                         "enabled, ignoring the command");
+    return;
+  }
   velTarget_ = qd_dot;
 }
 
@@ -193,29 +197,11 @@ void TorqueJointTask::setTorqueFeedforward(const Eigen::VectorXd & tau_ff)
   torqueFeedforward_ = tau_ff;
 }
 
-const Eigen::VectorXd & TorqueJointTask::stiffness() const
+void TorqueJointTask::setDeriveVelocityTargetFromPosition(bool compute)
 {
-  return stiffness_;
-}
-
-const Eigen::VectorXd & TorqueJointTask::damping() const
-{
-  return damping_;
-}
-
-const Eigen::VectorXd & TorqueJointTask::posTarget() const
-{
-  return posTarget_;
-}
-
-const Eigen::VectorXd & TorqueJointTask::velTarget() const
-{
-  return velTarget_;
-}
-
-const Eigen::VectorXd & TorqueJointTask::torqueFeedforward() const
-{
-  return torqueFeedforward_;
+  deriveVelocityTargetFromPosition_ = compute;
+  if(compute)
+    prevPosTarget_ = posTarget_; // Reset previous position target to avoid large velocity target on the first update
 }
 
 void TorqueJointTask::addToGUI(mc_rtc::gui::StateBuilder & gui)
@@ -244,13 +230,6 @@ void TorqueJointTask::addToGUI(mc_rtc::gui::StateBuilder & gui)
       {"Tasks", name_, "Gains"}, mc_rtc::gui::ArrayInput("Stiffness", jointNames, stiffness_),
       mc_rtc::gui::ArrayInput("Damping", jointNames, damping_),
       mc_rtc::gui::NumberInput(
-          "Constant Stiffness & Critical Damping", [this]() { return stiffness_[0]; },
-          [this](const double & g)
-          {
-            setStiffness(g);
-            setDamping(2.0 * sqrt(g));
-          }),
-      mc_rtc::gui::NumberInput(
           "Constant Stiffness", [this]() { return stiffness_[0]; }, [this](const double & s) { setStiffness(s); }),
       mc_rtc::gui::NumberInput(
           "Constant Damping", [this]() { return damping_[0]; }, [this](const double & d) { setDamping(d); }),
@@ -258,8 +237,8 @@ void TorqueJointTask::addToGUI(mc_rtc::gui::StateBuilder & gui)
           "Enable Integral Term", [this]() { return integralTermEnabled(); },
           [this]() { enableIntegralTerm(!integralTermEnabled()); }),
       mc_rtc::gui::Checkbox(
-          "Derive Velocity Target from Position", [this]() { return computeVelocityTargetFromPosition(); },
-          [this]() { setDeriveVelocityTargetFromPosition(!computeVelocityTargetFromPosition()); }));
+          "Derive Velocity Target from Position Target", [this]() { return deriveVelocityTargetFromPosition(); },
+          [this]() { setDeriveVelocityTargetFromPosition(!deriveVelocityTargetFromPosition()); }));
 
   gui.addElement({"Tasks", name_, "Gains", "Integral Term"},
                  mc_rtc::gui::ArrayInput("Integral Gain", jointNames, integralGain_),
@@ -331,8 +310,6 @@ void TorqueJointTask::addToGUI(mc_rtc::gui::StateBuilder & gui)
 
 void TorqueJointTask::addToLogger(mc_rtc::Logger & logger)
 {
-  TorqueTask::addToLogger(logger);
-  logger.removeLogEntry(name_ + "_torque");
   logger.addLogEntry(name_ + "_stiffness", [this]() { return stiffness_; });
   logger.addLogEntry(name_ + "_damping", [this]() { return damping_; });
   logger.addLogEntry(name_ + "_posTarget", [this]() { return posTarget_; });
@@ -340,14 +317,14 @@ void TorqueJointTask::addToLogger(mc_rtc::Logger & logger)
   logger.addLogEntry(name_ + "_torqueFeedforward", [this]() { return torqueFeedforward_; });
   logger.addLogEntry(name_ + "_posError", [this]() { return posError_; });
   logger.addLogEntry(name_ + "_velError", [this]() { return velError_; });
-  logger.addLogEntry(name_ + "_torque", [this]() { return torqueTarget_; });
-  logger.addLogEntry(name_ + "_computeVelocityTargetFromPosition",
-                     [this]() { return computeVelocityTargetFromPosition(); });
-  logger.addLogEntry(name_ + "_integralTermEnabled", [this]() { return integralTermEnabled(); });
+  logger.addLogEntry(name_ + "_deriveVelocityTargetFromPosition",
+                     [this]() { return deriveVelocityTargetFromPosition_; });
+  logger.addLogEntry(name_ + "_integralTermEnabled", [this]() { return integralTermEnabled_; });
   logger.addLogEntry(name_ + "_integralGain", [this]() { return integralGain_; });
   logger.addLogEntry(name_ + "_maxIntegralTorque", [this]() { return maxIntegralTorque_; });
   logger.addLogEntry(name_ + "_integralError", [this]() { return integralError_; });
   logger.addLogEntry(name_ + "_integralTorque", [this]() { return integralTorque_; });
+  TorqueTask::addToLogger(logger);
 }
 
 } // namespace mc_tasks
