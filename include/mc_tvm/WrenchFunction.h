@@ -37,16 +37,21 @@ public:
   void reset();
 
   /** Get the current wrench estimated */
-  inline sva::ForceVecd currentWrench();
+  sva::ForceVecd currentWrench();
 
   /** Get the current objective */
-  inline const sva::ForceVecd & wrench() const noexcept { return wrench_; }
+  sva::ForceVecd targetWrench() const { return wrench_; }
 
   /** Set the objective */
-  inline void wrench(const sva::ForceVecd & wrench) noexcept { wrench_ = wrench; }
+  void targetWrench(const sva::ForceVecd & wrench) noexcept { wrench_ = wrench; }
 
   /** Get the frame */
-  inline const mc_rbdyn::RobotFrame & frame() const noexcept { return *frame_; }
+  const mc_rbdyn::RobotFrame & frame() const noexcept { return *frame_; }
+
+  /** Get the current Transpose Dynamic Jacobian */
+  Eigen::MatrixXd dynamicJacobianTranspose() const { return dynamicJacMat_.transpose(); }
+
+  Eigen::Matrix6d cartesianInertia() const { return cartesianInertiaMat_; }
 
 protected:
   void updateb();
@@ -62,7 +67,8 @@ protected:
   rbd::Jacobian frameJac_;
   Eigen::MatrixXd shortJacMat_;
   Eigen::MatrixXd jacMat_;
-  Eigen::MatrixXd dynamicJacTransposeMat_;
+  Eigen::MatrixXd dynamicJacMat_;
+  Eigen::Matrix6d cartesianInertiaMat_;
 
   /** Target */
   sva::ForceVecd wrench_;

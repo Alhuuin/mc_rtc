@@ -46,6 +46,7 @@ public:
    * offset}
    * \param velocityPercent Maximum joint velocity percentage, 0.5 is advised
    * \param infTorque If true, ignore the torque limits set in the robot model
+   * \param compensateExternalForces If true, external forces are added to the dynamic model constraint
    */
   DynamicsConstraint(const mc_rbdyn::Robots & robots,
                      unsigned int robotIndex,
@@ -53,7 +54,7 @@ public:
                      const std::array<double, 3> & damper,
                      double velocityPercent = 1.0,
                      bool infTorque = false,
-                     bool compensateExternalForces = false);
+                     bool compensateExternalForces = true);
 
   /** Constructor
    * Builds a damped joint limits constraint and a motion constr depending on
@@ -64,13 +65,13 @@ public:
    * \param damperSecond Value of the damper {interaction distance, safety distance,
    * offset, amortization margin, lambda}
    * \param velocityPercent Maximum joint velocity percentage, 0.5 is advised
-   * \param infTorque If true, ignore the torque limits set in the robot model
+   * \param compensateExternalForces If true, external forces are added to the dynamic model constraint
    */
   DynamicsConstraint(const mc_rbdyn::Robots & robots,
                      unsigned int robotIndex,
                      const std::array<double, 5> & damperSecond,
                      double velocityPercent = 1.0,
-                     bool compensateExternalForces = false);
+                     bool compensateExternalForces = true);
 
   /** Returns the tasks::qp::MotionConstr
    *
